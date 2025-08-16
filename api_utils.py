@@ -29,6 +29,8 @@ def call_grok(prompt: str, api_key: str, model: str = "grok-beta") -> Optional[s
     if not api_key:
         raise ValueError("Grok API key not provided")
     
+    print(f"DEBUG: Calling Grok API with key starting: {api_key[:10]}...")
+    
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
@@ -45,12 +47,19 @@ def call_grok(prompt: str, api_key: str, model: str = "grok-beta") -> Optional[s
     
     for attempt in range(MAX_RETRIES):
         try:
+            print(f"DEBUG: Sending request to {GROK_ENDPOINT}")
+            print(f"DEBUG: Payload: {payload}")
+            
             response = requests.post(
                 GROK_ENDPOINT,
                 headers=headers,
                 json=payload,
                 timeout=API_TIMEOUT
             )
+            
+            print(f"DEBUG: Response status: {response.status_code}")
+            print(f"DEBUG: Response headers: {dict(response.headers)}")
+            
             response.raise_for_status()
             
             data = response.json()
@@ -93,6 +102,8 @@ def call_claude(prompt: str, api_key: str, model: str = "claude-3-5-sonnet-20241
     if not api_key:
         raise ValueError("Claude API key not provided")
     
+    print(f"DEBUG: Calling Claude API with key starting: {api_key[:10]}...")
+    
     headers = {
         "x-api-key": api_key,
         "Content-Type": "application/json",
@@ -109,12 +120,19 @@ def call_claude(prompt: str, api_key: str, model: str = "claude-3-5-sonnet-20241
     
     for attempt in range(MAX_RETRIES):
         try:
+            print(f"DEBUG: Sending request to {CLAUDE_ENDPOINT}")
+            print(f"DEBUG: Payload: {payload}")
+            
             response = requests.post(
                 CLAUDE_ENDPOINT,
                 headers=headers,
                 json=payload,
                 timeout=API_TIMEOUT
             )
+            
+            print(f"DEBUG: Response status: {response.status_code}")
+            print(f"DEBUG: Response headers: {dict(response.headers)}")
+            
             response.raise_for_status()
             
             data = response.json()
