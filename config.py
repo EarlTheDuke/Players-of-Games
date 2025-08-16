@@ -28,7 +28,7 @@ except Exception as e:
     CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
 
 # Model names - Updated for current API versions
-GROK_MODEL = "grok-beta"  # or try "grok-2-1212" if beta doesn't work
+GROK_MODEL = "grok-2-1212"  # Updated to latest stable model
 CLAUDE_MODEL = "claude-3-5-sonnet-20241022"
 
 # API Endpoints
@@ -68,5 +68,5 @@ REASONING: [your_reasoning]
 
 # Game settings
 MAX_RETRIES = 3
-API_TIMEOUT = 30
+API_TIMEOUT = 60  # Increased timeout for better reliability
 MAX_TOKENS = 500
