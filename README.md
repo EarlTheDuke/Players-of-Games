@@ -4,9 +4,9 @@ A Python application that pits AI models like Grok (from xAI) against Claude (fr
 
 ## 🌐 **Live Demo**
 
-**Try it now:** [https://players-of-games.streamlit.app](https://players-of-games.streamlit.app) *(coming soon)*
+**Try it now:** [https://players-of-games-7zhcozdcu3abfsemnhq5ld.streamlit.app/](https://players-of-games-7zhcozdcu3abfsemnhq5ld.streamlit.app/)
 
-Experience AI vs AI gameplay directly in your browser with our Streamlit Cloud deployment!
+Experience AI vs AI gameplay directly in your browser with our Streamlit Cloud deployment! ✨
 
 ## Features
 
