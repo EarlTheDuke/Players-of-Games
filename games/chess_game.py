@@ -101,8 +101,17 @@ class ChessGame(BaseGame):
             True if move was valid and applied
         """
         try:
+            # Clean the action string
+            action = action.strip().lower()
+            
             # Parse UCI move
             move = chess.Move.from_uci(action)
+            
+            # Debug logging
+            print(f"DEBUG: Attempting move {action} for {self.current_player}")
+            print(f"DEBUG: Current turn: {'White' if self.board.turn == chess.WHITE else 'Black'}")
+            print(f"DEBUG: Move legal: {move in self.board.legal_moves}")
+            print(f"DEBUG: Legal moves: {[str(m) for m in list(self.board.legal_moves)[:10]]}...")
             
             # Check if move is legal
             if move in self.board.legal_moves:
@@ -112,11 +121,14 @@ class ChessGame(BaseGame):
                 
                 # Apply the move
                 self.board.push(move)
+                print(f"DEBUG: Move {action} applied successfully")
                 return True
             else:
+                print(f"DEBUG: Move {action} is not legal in current position")
                 return False
                 
-        except (ValueError, chess.InvalidMoveError):
+        except (ValueError, chess.InvalidMoveError) as e:
+            print(f"DEBUG: Invalid move format {action}: {e}")
             return False
     
     def get_prompt(self) -> str:
@@ -124,20 +136,50 @@ class ChessGame(BaseGame):
         current_color = self._get_current_player_color()
         color_name = "White" if current_color == chess.WHITE else "Black"
         
+        # Verify player turn matches board turn
+        board_turn = "White" if self.board.turn == chess.WHITE else "Black"
+        print(f"DEBUG: Player {self.current_player} ({color_name}) requesting move")
+        print(f"DEBUG: Board expects {board_turn} to move")
+        
+        if color_name != board_turn:
+            print(f"ERROR: Turn mismatch! Player is {color_name} but board expects {board_turn}")
+            # Try to sync by switching the current player
+            self.next_player()
+            current_color = self._get_current_player_color()
+            color_name = "White" if current_color == chess.WHITE else "Black"
+            print(f"DEBUG: Switched to player {self.current_player} ({color_name})")
+        
         legal_moves = self.get_legal_actions()
         
         # Limit the number of legal moves shown to avoid very long prompts
-        if len(legal_moves) > 20:
-            shown_moves = legal_moves[:20] + [f"... and {len(legal_moves) - 20} more moves"]
+        if len(legal_moves) > 15:
+            shown_moves = legal_moves[:15] + [f"... and {len(legal_moves) - 15} more moves"]
         else:
             shown_moves = legal_moves
         
-        return CHESS_PROMPT_TEMPLATE.format(
-            color=color_name,
-            fen=self.get_state_text(),
-            board_display=self.get_state_display(),
-            legal_moves=", ".join(shown_moves)
-        )
+        # Enhanced prompt with clearer instructions
+        enhanced_prompt = f"""You are playing chess as {color_name}.
+
+CURRENT POSITION (FEN): {self.get_state_text()}
+
+CURRENT BOARD:
+{self.get_state_display()}
+
+YOUR LEGAL MOVES (UCI format): {", ".join(shown_moves)}
+
+IMPORTANT INSTRUCTIONS:
+1. You are playing as {color_name} - only move {color_name} pieces
+2. Choose ONLY from the legal moves listed above
+3. Respond with a move in UCI format (e.g., e2e4, g1f3)
+4. The current position shows move {self.board.fullmove_number}
+
+Format your response exactly like this:
+MOVE: [choose one from legal moves above]
+REASONING: [brief explanation of your choice]
+
+Your move:"""
+        
+        return enhanced_prompt
     
     def parse_action_from_response(self, response: str) -> Optional[str]:
         """Parse a UCI move from the AI's response."""
