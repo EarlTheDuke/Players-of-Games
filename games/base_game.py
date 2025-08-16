@@ -1,0 +1,268 @@
+"""Abstract base class for game implementations."""
+from abc import ABC, abstractmethod
+from typing import Dict, List, Optional, Any, Tuple
+import random
+from logger import GameLogger
+from api_utils import get_api_function, extract_reasoning
+from config import GROK_API_KEY, CLAUDE_API_KEY
+
+
+class BaseGame(ABC):
+    """Abstract base class for all game implementations."""
+    
+    def __init__(self, players: Dict[str, str], log_to_file: bool = True):
+        """
+        Initialize the game.
+        
+        Args:
+            players: Dictionary mapping player names to model types
+                    e.g., {'player1': 'grok', 'player2': 'claude'}
+            log_to_file: Whether to log game to file
+        """
+        self.players = players
+        self.player_list = list(players.keys())
+        self.current_player_index = 0
+        self.move_count = 0
+        self.game_over = False
+        self.winner = None
+        self.result = None
+        
+        # Set up API keys for each player
+        self.player_configs = {}
+        for player_name, model_type in players.items():
+            api_key = GROK_API_KEY if model_type.lower() == 'grok' else CLAUDE_API_KEY
+            self.player_configs[player_name] = {
+                'model': model_type,
+                'api_key': api_key,
+                'api_function': get_api_function(model_type)
+            }
+        
+        # Initialize logger
+        self.logger = GameLogger(self.get_game_name(), log_to_file)
+        
+    @property
+    def current_player(self) -> str:
+        """Get the current player name."""
+        return self.player_list[self.current_player_index]
+    
+    def next_player(self):
+        """Switch to the next player."""
+        self.current_player_index = (self.current_player_index + 1) % len(self.player_list)
+    
+    @abstractmethod
+    def get_game_name(self) -> str:
+        """Return the name of the game."""
+        pass
+    
+    @abstractmethod
+    def get_state_text(self) -> str:
+        """Return a text representation of the current game state."""
+        pass
+    
+    @abstractmethod
+    def get_state_display(self) -> str:
+        """Return a human-readable display of the current game state."""
+        pass
+    
+    @abstractmethod
+    def get_legal_actions(self) -> List[str]:
+        """Return a list of legal actions in the current state."""
+        pass
+    
+    @abstractmethod
+    def is_game_over(self) -> bool:
+        """Check if the game is over."""
+        pass
+    
+    @abstractmethod
+    def get_game_result(self) -> Tuple[str, Optional[str]]:
+        """
+        Get the game result.
+        
+        Returns:
+            Tuple of (result_type, winner) where result_type is 'win', 'draw', etc.
+        """
+        pass
+    
+    @abstractmethod
+    def validate_and_apply_action(self, action: str) -> bool:
+        """
+        Validate and apply an action to the game state.
+        
+        Args:
+            action: The action to validate and apply
+            
+        Returns:
+            True if action was valid and applied, False otherwise
+        """
+        pass
+    
+    @abstractmethod
+    def get_prompt(self) -> str:
+        """Generate a prompt for the current player."""
+        pass
+    
+    @abstractmethod
+    def parse_action_from_response(self, response: str) -> Optional[str]:
+        """
+        Parse an action from the AI's response.
+        
+        Args:
+            response: The AI's response text
+            
+        Returns:
+            Parsed action or None if parsing failed
+        """
+        pass
+    
+    def prompt_player(self) -> Tuple[Optional[str], str]:
+        """
+        Prompt the current player for their move.
+        
+        Returns:
+            Tuple of (action, reasoning) or (None, error_message) if failed
+        """
+        player_name = self.current_player
+        config = self.player_configs[player_name]
+        
+        prompt = self.get_prompt()
+        
+        try:
+            # Call the appropriate API
+            response = config['api_function'](
+                prompt, 
+                config['api_key'],
+                config['model']
+            )
+            
+            if not response:
+                return None, "No response received from API"
+            
+            # Parse the action from response
+            action = self.parse_action_from_response(response)
+            reasoning = extract_reasoning(response)
+            
+            if not action:
+                return None, f"Could not parse action from response: {response[:100]}..."
+            
+            return action, reasoning
+            
+        except Exception as e:
+            return None, f"Error calling API: {str(e)}"
+    
+    def make_move(self) -> bool:
+        """
+        Make a move for the current player.
+        
+        Returns:
+            True if move was successful, False if game should end
+        """
+        player_name = self.current_player
+        max_attempts = 3
+        
+        for attempt in range(max_attempts):
+            # Get move from AI
+            action, reasoning = self.prompt_player()
+            
+            if action is None:
+                self.logger.log_error(
+                    "api_error", 
+                    reasoning,
+                    {"player": player_name, "attempt": attempt + 1}
+                )
+                
+                if attempt == max_attempts - 1:
+                    # Final attempt failed, use random move
+                    legal_actions = self.get_legal_actions()
+                    if legal_actions:
+                        action = random.choice(legal_actions)
+                        reasoning = f"Random fallback move after {max_attempts} failed attempts"
+                        self.logger.log_error(
+                            "fallback_move",
+                            f"Using random move: {action}",
+                            {"player": player_name}
+                        )
+                    else:
+                        self.logger.log_error("no_legal_moves", "No legal moves available")
+                        return False
+                else:
+                    continue
+            
+            # Validate and apply the action
+            self.move_count += 1
+            is_valid = self.validate_and_apply_action(action)
+            
+            # Log the move
+            self.logger.log_move(
+                player=player_name,
+                move=action,
+                reasoning=reasoning,
+                game_state=self.get_state_text(),
+                move_number=self.move_count,
+                is_valid=is_valid
+            )
+            
+            if is_valid:
+                # Move was successful
+                self.next_player()
+                return True
+            else:
+                # Invalid move, try again
+                if attempt == max_attempts - 1:
+                    # All attempts failed
+                    self.logger.log_error(
+                        "invalid_moves",
+                        f"Player {player_name} made {max_attempts} invalid moves",
+                        {"last_move": action}
+                    )
+                    return False
+        
+        return False
+    
+    def play(self) -> Dict[str, Any]:
+        """
+        Play the complete game.
+        
+        Returns:
+            Dictionary containing game results
+        """
+        # Log game start
+        self.logger.log_game_start(
+            players=self.players,
+            initial_state=self.get_state_display()
+        )
+        
+        # Main game loop
+        while not self.is_game_over():
+            success = self.make_move()
+            if not success:
+                # Game ended due to error
+                self.logger.log_game_end(
+                    result="error",
+                    final_state=self.get_state_display(),
+                    total_moves=self.move_count
+                )
+                return {
+                    "result": "error",
+                    "winner": None,
+                    "total_moves": self.move_count,
+                    "game_history": self.logger.game_history
+                }
+        
+        # Game ended normally
+        result_type, winner = self.get_game_result()
+        
+        self.logger.log_game_end(
+            result=result_type,
+            winner=winner,
+            final_state=self.get_state_display(),
+            total_moves=self.move_count
+        )
+        
+        return {
+            "result": result_type,
+            "winner": winner,
+            "total_moves": self.move_count,
+            "game_history": self.logger.game_history,
+            "final_state": self.get_state_display()
+        }

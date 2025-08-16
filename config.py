@@ -1,0 +1,54 @@
+"""Configuration settings for Players of Games."""
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# API Configuration
+GROK_API_KEY = os.getenv('GROK_API_KEY')
+CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
+
+# Model names
+GROK_MODEL = "grok-beta"
+CLAUDE_MODEL = "claude-3-5-sonnet-20241022"
+
+# API Endpoints
+GROK_ENDPOINT = "https://api.x.ai/v1/chat/completions"
+CLAUDE_ENDPOINT = "https://api.anthropic.com/v1/messages"
+
+# Default prompts
+CHESS_PROMPT_TEMPLATE = """You are playing chess as {color}. 
+
+Current board state (FEN): {fen}
+Current board position:
+{board_display}
+
+Legal moves available: {legal_moves}
+
+Please analyze the position and choose your next move. Respond with:
+1. Your chosen move in UCI notation (e.g., "e2e4", "g1f3", "e7e8q" for promotion)
+2. Brief reasoning for your choice
+
+Format your response like this:
+MOVE: [your_move_in_uci]
+REASONING: [your_reasoning]
+"""
+
+TICTACTOE_PROMPT_TEMPLATE = """You are playing Tic-Tac-Toe as {symbol}.
+
+Current board state:
+{board_display}
+
+Available moves: {legal_moves}
+
+Choose your next move by specifying the row and column (0-2).
+Format your response like this:
+MOVE: [row],[col]
+REASONING: [your_reasoning]
+"""
+
+# Game settings
+MAX_RETRIES = 3
+API_TIMEOUT = 30
+MAX_TOKENS = 500
