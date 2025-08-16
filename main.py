@@ -6,16 +6,16 @@ from typing import Dict, Any, Optional
 import streamlit as st
 from games.chess_game import ChessGame
 from games.tictactoe_game import TicTacToeGame
-from config import GROK_API_KEY, CLAUDE_API_KEY
+import config
 
 
 def validate_api_keys() -> bool:
     """Validate that required API keys are available."""
     missing_keys = []
     
-    if not GROK_API_KEY:
+    if not config.GROK_API_KEY:
         missing_keys.append("GROK_API_KEY")
-    if not CLAUDE_API_KEY:
+    if not config.CLAUDE_API_KEY:
         missing_keys.append("CLAUDE_API_KEY")
     
     if missing_keys:
@@ -160,21 +160,21 @@ def run_streamlit_app():
     # Debug: Show API key status
     st.sidebar.subheader("🔍 Debug Info")
     
-    grok_key_status = "✅ Present" if GROK_API_KEY else "❌ Missing"
-    claude_key_status = "✅ Present" if CLAUDE_API_KEY else "❌ Missing"
+    grok_key_status = "✅ Present" if config.GROK_API_KEY else "❌ Missing"
+    claude_key_status = "✅ Present" if config.CLAUDE_API_KEY else "❌ Missing"
     
     st.sidebar.text(f"Grok Key: {grok_key_status}")
     st.sidebar.text(f"Claude Key: {claude_key_status}")
     
-    if GROK_API_KEY:
-        st.sidebar.text(f"Grok Key Preview: {GROK_API_KEY[:8]}...")
-    if CLAUDE_API_KEY:
-        st.sidebar.text(f"Claude Key Preview: {CLAUDE_API_KEY[:8]}...")
+    if config.GROK_API_KEY:
+        st.sidebar.text(f"Grok Key Preview: {config.GROK_API_KEY[:8]}...")
+    if config.CLAUDE_API_KEY:
+        st.sidebar.text(f"Claude Key Preview: {config.CLAUDE_API_KEY[:8]}...")
     
     # Check for API key configuration
-    api_keys_configured = bool(GROK_API_KEY and CLAUDE_API_KEY and 
-                              GROK_API_KEY != "test_grok_key_for_local_testing" and
-                              CLAUDE_API_KEY != "test_claude_key_for_local_testing")
+    api_keys_configured = bool(config.GROK_API_KEY and config.CLAUDE_API_KEY and 
+                              config.GROK_API_KEY != "test_grok_key_for_local_testing" and
+                              config.CLAUDE_API_KEY != "test_claude_key_for_local_testing")
     
     if not api_keys_configured:
         st.warning("""
@@ -369,10 +369,9 @@ def run_streamlit_app():
                 st.write("**Testing Grok API...**")
                 try:
                     from api_utils import call_grok
-                    from config import GROK_API_KEY, GROK_MODEL
                     
-                    if GROK_API_KEY:
-                        result = call_grok("Say 'test' in one word.", GROK_API_KEY, GROK_MODEL)
+                    if config.GROK_API_KEY:
+                        result = call_grok("Say 'test' in one word.", config.GROK_API_KEY, config.GROK_MODEL)
                         if result:
                             st.success(f"✅ Grok API working: {result}")
                         else:
@@ -386,10 +385,9 @@ def run_streamlit_app():
                 st.write("**Testing Claude API...**")
                 try:
                     from api_utils import call_claude
-                    from config import CLAUDE_API_KEY, CLAUDE_MODEL
                     
-                    if CLAUDE_API_KEY:
-                        result = call_claude("Say 'test' in one word.", CLAUDE_API_KEY, CLAUDE_MODEL)
+                    if config.CLAUDE_API_KEY:
+                        result = call_claude("Say 'test' in one word.", config.CLAUDE_API_KEY, config.CLAUDE_MODEL)
                         if result:
                             st.success(f"✅ Claude API working: {result}")
                         else:
