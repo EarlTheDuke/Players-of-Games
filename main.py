@@ -361,6 +361,44 @@ def run_streamlit_app():
     with col2:
         st.header("📝 Game Log")
         
+        # Add API Debug Section
+        st.subheader("🔧 API Debug Info")
+        if st.button("Test API Connections"):
+            with st.spinner("Testing API connections..."):
+                # Test Grok API
+                st.write("**Testing Grok API...**")
+                try:
+                    from api_utils import call_grok
+                    from config import GROK_API_KEY, GROK_MODEL
+                    
+                    if GROK_API_KEY:
+                        result = call_grok("Say 'test' in one word.", GROK_API_KEY, GROK_MODEL)
+                        if result:
+                            st.success(f"✅ Grok API working: {result}")
+                        else:
+                            st.error("❌ Grok API failed - check server logs")
+                    else:
+                        st.error("❌ Grok API key missing")
+                except Exception as e:
+                    st.error(f"❌ Grok API error: {str(e)}")
+                
+                # Test Claude API  
+                st.write("**Testing Claude API...**")
+                try:
+                    from api_utils import call_claude
+                    from config import CLAUDE_API_KEY, CLAUDE_MODEL
+                    
+                    if CLAUDE_API_KEY:
+                        result = call_claude("Say 'test' in one word.", CLAUDE_API_KEY, CLAUDE_MODEL)
+                        if result:
+                            st.success(f"✅ Claude API working: {result}")
+                        else:
+                            st.error("❌ Claude API failed - check server logs")
+                    else:
+                        st.error("❌ Claude API key missing")
+                except Exception as e:
+                    st.error(f"❌ Claude API error: {str(e)}")
+        
         if st.session_state.game and hasattr(st.session_state.game, 'logger'):
             game_history = st.session_state.game.logger.game_history
             
