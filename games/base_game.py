@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Any, Tuple
 import random
 from logger import GameLogger
 from api_utils import get_api_function, extract_reasoning
-from config import GROK_API_KEY, CLAUDE_API_KEY
+import config
 
 
 class BaseGame(ABC):
@@ -30,9 +30,11 @@ class BaseGame(ABC):
         # Set up API keys for each player
         self.player_configs = {}
         for player_name, model_type in players.items():
-            api_key = GROK_API_KEY if model_type.lower() == 'grok' else CLAUDE_API_KEY
+            api_key = config.GROK_API_KEY if model_type.lower() == 'grok' else config.CLAUDE_API_KEY
+            # Use the actual model names from config, not the player type
+            actual_model = config.GROK_MODEL if model_type.lower() == 'grok' else config.CLAUDE_MODEL
             self.player_configs[player_name] = {
-                'model': model_type,
+                'model': actual_model,  # Use actual model name like "grok-2-1212"
                 'api_key': api_key,
                 'api_function': get_api_function(model_type)
             }
@@ -129,11 +131,21 @@ class BaseGame(ABC):
         
         try:
             # Call the appropriate API
+            print(f"DEBUG: Game calling API for {player_name} with model {config['model']}")
+            print(f"DEBUG: Prompt length: {len(prompt)} characters")
+            print(f"DEBUG: First 100 chars of prompt: {prompt[:100]}...")
+            
             response = config['api_function'](
                 prompt, 
                 config['api_key'],
                 config['model']
             )
+            
+            print(f"DEBUG: API response length: {len(response) if response else 0}")
+            if response:
+                print(f"DEBUG: First 100 chars of response: {response[:100]}...")
+            else:
+                print("DEBUG: No response received from API")
             
             if not response:
                 return None, "No response received from API"
