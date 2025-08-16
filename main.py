@@ -157,6 +157,20 @@ def run_streamlit_app():
         **Note**: This is a demonstration of AI capabilities. Games may take a few moments as the AIs "think" about their moves.
         """)
     
+    # Debug: Show API key status
+    st.sidebar.subheader("🔍 Debug Info")
+    
+    grok_key_status = "✅ Present" if GROK_API_KEY else "❌ Missing"
+    claude_key_status = "✅ Present" if CLAUDE_API_KEY else "❌ Missing"
+    
+    st.sidebar.text(f"Grok Key: {grok_key_status}")
+    st.sidebar.text(f"Claude Key: {claude_key_status}")
+    
+    if GROK_API_KEY:
+        st.sidebar.text(f"Grok Key Preview: {GROK_API_KEY[:8]}...")
+    if CLAUDE_API_KEY:
+        st.sidebar.text(f"Claude Key Preview: {CLAUDE_API_KEY[:8]}...")
+    
     # Check for API key configuration
     api_keys_configured = bool(GROK_API_KEY and CLAUDE_API_KEY and 
                               GROK_API_KEY != "test_grok_key_for_local_testing" and

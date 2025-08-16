@@ -61,7 +61,11 @@ def call_grok(prompt: str, api_key: str, model: str = "grok-beta") -> Optional[s
                 return None
                 
         except requests.exceptions.RequestException as e:
-            print(f"Grok API call attempt {attempt + 1} failed: {e}")
+            error_msg = f"Grok API call attempt {attempt + 1} failed: {e}"
+            print(error_msg)
+            if hasattr(e, 'response') and e.response is not None:
+                print(f"Response status: {e.response.status_code}")
+                print(f"Response content: {e.response.text[:200]}...")
             if attempt < MAX_RETRIES - 1:
                 exponential_backoff(attempt)
             else:
@@ -121,7 +125,11 @@ def call_claude(prompt: str, api_key: str, model: str = "claude-3-5-sonnet-20241
                 return None
                 
         except requests.exceptions.RequestException as e:
-            print(f"Claude API call attempt {attempt + 1} failed: {e}")
+            error_msg = f"Claude API call attempt {attempt + 1} failed: {e}"
+            print(error_msg)
+            if hasattr(e, 'response') and e.response is not None:
+                print(f"Response status: {e.response.status_code}")
+                print(f"Response content: {e.response.text[:200]}...")
             if attempt < MAX_RETRIES - 1:
                 exponential_backoff(attempt)
             else:
