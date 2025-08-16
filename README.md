@@ -2,6 +2,12 @@
 
 A Python application that pits AI models like Grok (from xAI) against Claude (from Anthropic) in various games including Chess and Tic-Tac-Toe. Watch as different AI models battle it out using strategic reasoning!
 
+## 🌐 **Live Demo**
+
+**Try it now:** [https://players-of-games.streamlit.app](https://players-of-games.streamlit.app) *(coming soon)*
+
+Experience AI vs AI gameplay directly in your browser with our Streamlit Cloud deployment!
+
 ## Features
 
 - **Multiple Games**: Currently supports Chess and Tic-Tac-Toe, with extensible architecture for more games

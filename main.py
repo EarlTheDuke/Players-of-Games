@@ -129,13 +129,57 @@ def run_console_game(game_type: str, player1: str, player2: str,
 def run_streamlit_app():
     """Run the Streamlit web interface."""
     st.set_page_config(
-        page_title="Players of Games",
+        page_title="Players of Games - AI vs AI Arena",
         page_icon="🎮",
-        layout="wide"
+        layout="wide",
+        initial_sidebar_state="expanded"
     )
     
-    st.title("🎮 Players of Games")
-    st.subtitle("AI vs AI Game Arena")
+    # Header with styling
+    st.markdown("""
+    <div style="text-align: center; padding: 20px 0;">
+        <h1>🎮 Players of Games</h1>
+        <h3>AI vs AI Game Arena</h3>
+        <p>Watch Grok from xAI battle Claude from Anthropic in strategic games!</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Add usage instructions
+    with st.expander("ℹ️ How to Use This App", expanded=False):
+        st.markdown("""
+        **Welcome to Players of Games!** This app lets you watch AI models compete in real-time:
+        
+        1. **Select a Game**: Choose Chess or Tic-Tac-Toe from the sidebar
+        2. **Choose Players**: Pick which AI models will compete (Grok vs Claude)
+        3. **Start Playing**: Click "New Game" to begin, then watch the AIs battle!
+        4. **View Analysis**: See move reasoning, game statistics, and position analysis
+        
+        **Note**: This is a demonstration of AI capabilities. Games may take a few moments as the AIs "think" about their moves.
+        """)
+    
+    # Check for API key configuration
+    api_keys_configured = bool(GROK_API_KEY and CLAUDE_API_KEY and 
+                              GROK_API_KEY != "test_grok_key_for_local_testing" and
+                              CLAUDE_API_KEY != "test_claude_key_for_local_testing")
+    
+    if not api_keys_configured:
+        st.warning("""
+        ⚠️ **API Keys Required**: This app requires API keys from xAI (Grok) and Anthropic (Claude) to function.
+        
+        For demo purposes, you can still explore the interface, but games won't work without valid API keys.
+        """)
+        
+        with st.expander("🔑 How to Get API Keys"):
+            st.markdown("""
+            **To run games with real AI models:**
+            
+            1. **Grok API Key**: Visit [x.ai](https://x.ai) to sign up and get your API key
+            2. **Claude API Key**: Visit [console.anthropic.com](https://console.anthropic.com) to get your API key
+            3. **For Streamlit Cloud**: Add keys in the app settings under "Secrets"
+            4. **For Local Use**: Add keys to your .env file
+            """)
+    else:
+        st.success("✅ API keys configured! Ready to play games.")
     
     # Sidebar for game configuration
     st.sidebar.header("Game Configuration")
@@ -166,10 +210,48 @@ def run_streamlit_app():
     auto_play = st.sidebar.checkbox("Auto-play moves", value=False)
     show_analysis = st.sidebar.checkbox("Show position analysis", value=True)
     
-    # API key validation
-    if not validate_api_keys():
-        st.error("❌ Missing API keys! Please check your .env file.")
-        st.info("Required: GROK_API_KEY and CLAUDE_API_KEY")
+    # Demo mode when API keys aren't configured
+    if not api_keys_configured:
+        st.info("🎮 **Demo Mode**: Exploring the interface without API keys")
+        
+        # Show demo game state
+        st.subheader("🎯 Demo Game State")
+        
+        demo_game_type = st.sidebar.selectbox("Demo Game", ["Chess", "Tic-Tac-Toe"])
+        
+        if demo_game_type == "Chess":
+            st.markdown("**Sample Chess Position:**")
+            st.code("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1")
+            st.text("""
+    r n b q k b n r
+    p p p p p p p p
+    . . . . . . . .
+    . . . . . . . .
+    . . . . P . . .
+    . . . . . . . .
+    P P P P . P P P
+    R N B Q K B N R
+            """)
+            st.markdown("**Example AI Reasoning:**")
+            st.info("🤖 **Grok**: I'll play e2e4 to control the center and open lines for piece development.")
+            st.info("🤖 **Claude**: I'll respond with e7e5 to maintain central equality and challenge White's space advantage.")
+        
+        else:  # Tic-Tac-Toe
+            st.markdown("**Sample Tic-Tac-Toe Position:**")
+            st.text("""
+      0   1   2
+    0 X |   | O
+      ---------
+    1   | X |  
+      ---------
+    2 O |   |  
+            """)
+            st.markdown("**Example AI Reasoning:**")
+            st.info("🤖 **Grok**: I'll take position 1,2 to block Claude's potential winning line.")
+            st.info("🤖 **Claude**: I need to play 2,1 to create a fork and threaten multiple wins.")
+        
+        st.markdown("---")
+        st.markdown("**🔑 Get API keys to play real games with AI models!**")
         return
     
     # Initialize session state
