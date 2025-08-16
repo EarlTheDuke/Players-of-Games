@@ -5,9 +5,20 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# API Configuration
-GROK_API_KEY = os.getenv('GROK_API_KEY')
-CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
+# API Configuration - Handle both local and Streamlit Cloud
+try:
+    import streamlit as st
+    # Running in Streamlit Cloud
+    GROK_API_KEY = st.secrets.get("GROK_API_KEY", os.getenv('GROK_API_KEY'))
+    CLAUDE_API_KEY = st.secrets.get("CLAUDE_API_KEY", os.getenv('CLAUDE_API_KEY'))
+except ImportError:
+    # Running locally
+    GROK_API_KEY = os.getenv('GROK_API_KEY')
+    CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
+except Exception:
+    # Fallback to environment variables
+    GROK_API_KEY = os.getenv('GROK_API_KEY')
+    CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
 
 # Model names
 GROK_MODEL = "grok-beta"
