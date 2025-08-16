@@ -8,15 +8,22 @@ load_dotenv()
 # API Configuration - Handle both local and Streamlit Cloud
 try:
     import streamlit as st
-    # Running in Streamlit Cloud
-    GROK_API_KEY = st.secrets.get("GROK_API_KEY", os.getenv('GROK_API_KEY'))
-    CLAUDE_API_KEY = st.secrets.get("CLAUDE_API_KEY", os.getenv('CLAUDE_API_KEY'))
+    # Running in Streamlit Cloud - try both formats
+    try:
+        # Try direct key access first
+        GROK_API_KEY = st.secrets["GROK_API_KEY"]
+        CLAUDE_API_KEY = st.secrets["CLAUDE_API_KEY"]
+    except KeyError:
+        # Try nested format as backup
+        GROK_API_KEY = st.secrets.get("grok", {}).get("api_key", os.getenv('GROK_API_KEY'))
+        CLAUDE_API_KEY = st.secrets.get("claude", {}).get("api_key", os.getenv('CLAUDE_API_KEY'))
 except ImportError:
     # Running locally
     GROK_API_KEY = os.getenv('GROK_API_KEY')
     CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
-except Exception:
+except Exception as e:
     # Fallback to environment variables
+    print(f"Error loading secrets: {e}")
     GROK_API_KEY = os.getenv('GROK_API_KEY')
     CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
 
