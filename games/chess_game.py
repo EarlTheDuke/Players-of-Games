@@ -285,76 +285,126 @@ Your move:"""
         return enhanced_prompt
     
     def parse_action_from_response(self, response: str) -> Optional[str]:
-        """Parse a UCI move from the AI's response."""
-        parsed_move = parse_chess_move(response)
+        """Parse a UCI move from the AI's response with extensive debugging."""
+        print("\n" + "="*80)
+        print("🔍 MOVE VALIDATION DEBUG - DETAILED ANALYSIS")
+        print("="*80)
         
-        # Debug: Show what we parsed
-        print(f"DEBUG: AI Response: {response[:200]}...")
-        print(f"DEBUG: Parsed move: {parsed_move}")
-        print(f"DEBUG: Current FEN: {self.board.fen()}")
-        print(f"DEBUG: Legal moves: {[str(m) for m in list(self.board.legal_moves)[:10]]}...")
+        # Step 1: Parse the move from AI response
+        parsed_move = parse_chess_move(response)
+        print(f"📝 AI Response (first 200 chars): {response[:200]}...")
+        print(f"🎯 Parsed move from AI: '{parsed_move}'")
+        
+        # Step 2: Get current board state
+        current_fen = self.board.fen()
+        current_turn = "White" if self.board.turn else "Black"
+        print(f"♟️  Current board FEN: {current_fen}")
+        print(f"🔄 Current turn: {current_turn}")
+        
+        # Step 3: Get ALL legal moves in multiple formats
+        legal_moves_objects = list(self.board.legal_moves)
+        legal_moves_uci = [str(move) for move in legal_moves_objects]
+        legal_moves_san = []
+        
+        print(f"\n📋 LEGAL MOVES ANALYSIS:")
+        print(f"   Total legal moves: {len(legal_moves_objects)}")
+        print(f"   UCI format: {legal_moves_uci}")
+        
+        # Generate SAN (algebraic) for each legal move
+        for move_obj in legal_moves_objects:
+            try:
+                san = self.board.san(move_obj)
+                legal_moves_san.append(san)
+            except Exception as e:
+                print(f"   ⚠️  Error converting {move_obj} to SAN: {e}")
+        
+        print(f"   SAN format: {legal_moves_san}")
+        print(f"   SAN lowercase: {[san.lower() for san in legal_moves_san]}")
+        
+        # Step 4: Test the parsed move against legal moves
+        if not parsed_move:
+            print(f"❌ VALIDATION FAILED: No move could be parsed from AI response")
+            return None
+            
+        print(f"\n🔍 TESTING PARSED MOVE: '{parsed_move}'")
+        
+        # Test exact matches
+        uci_match = parsed_move in legal_moves_uci
+        san_exact_match = parsed_move in legal_moves_san
+        san_lower_match = parsed_move.lower() in [san.lower() for san in legal_moves_san]
+        
+        print(f"   ✓ UCI exact match: {uci_match}")
+        print(f"   ✓ SAN exact match: {san_exact_match}")
+        print(f"   ✓ SAN lowercase match: {san_lower_match}")
+        
+        # Step 5: Try to parse the move with python-chess
+        move_obj = None
+        parsing_method = None
+        
+        # Try UCI parsing
+        try:
+            move_obj = chess.Move.from_uci(parsed_move)
+            parsing_method = "UCI"
+            print(f"   ✅ UCI parsing successful: {move_obj}")
+        except Exception as e:
+            print(f"   ❌ UCI parsing failed: {e}")
+        
+        # Try SAN parsing if UCI failed
+        if move_obj is None:
+            try:
+                move_obj = self.board.parse_san(parsed_move)
+                parsing_method = "SAN"
+                print(f"   ✅ SAN parsing successful: {move_obj}")
+            except Exception as e:
+                print(f"   ❌ SAN parsing failed: {e}")
+        
+        # Try SAN parsing with capitalization fixes
+        if move_obj is None:
+            for variation in [parsed_move.capitalize(), parsed_move.upper()]:
+                try:
+                    move_obj = self.board.parse_san(variation)
+                    parsing_method = f"SAN ({variation})"
+                    print(f"   ✅ SAN parsing successful with '{variation}': {move_obj}")
+                    break
+                except Exception as e:
+                    print(f"   ❌ SAN parsing with '{variation}' failed: {e}")
+        
+        # Step 6: Check if parsed move is actually legal
+        if move_obj:
+            is_legal = move_obj in self.board.legal_moves
+            print(f"   ✅ Move object created via {parsing_method}: {move_obj}")
+            print(f"   ✅ Move is legal on board: {is_legal}")
+            
+            if is_legal:
+                print(f"🎉 VALIDATION SUCCESS: Move '{parsed_move}' is valid!")
+                try:
+                    from debug_console import debug_log
+                    debug_log(f"VALIDATION SUCCESS: {parsed_move} -> {move_obj}")
+                except:
+                    pass
+                return parsed_move
+            else:
+                print(f"❌ VALIDATION FAILED: Move object exists but is not in legal moves")
+                print(f"   Legal move objects: {legal_moves_objects[:10]}...")
+        else:
+            print(f"❌ VALIDATION FAILED: Could not create move object from '{parsed_move}'")
+        
+        # Step 7: Final failure logging
+        print(f"\n💥 FINAL RESULT: MOVE REJECTED")
+        print(f"   AI wanted: '{parsed_move}'")
+        print(f"   Available UCI: {legal_moves_uci[:5]}...")
+        print(f"   Available SAN: {legal_moves_san[:5]}...")
+        print("="*80)
         
         try:
             from debug_console import debug_log
-            debug_log(f"Chess Parse: AI said '{parsed_move}' from response starting: {response[:50]}...")
-            debug_log(f"Chess Parse: Current FEN: {self.board.fen()}")
+            debug_log(f"VALIDATION FAILED: {parsed_move} not in legal moves")
+            debug_log(f"Legal UCI: {legal_moves_uci[:5]}")
+            debug_log(f"Legal SAN: {legal_moves_san[:5]}")
         except:
             pass
-        
-        # Critical validation: Check if parsed move is legal and can be parsed correctly
-        if parsed_move:
-            # Get legal moves in UCI format
-            legal_moves_uci = [str(move) for move in self.board.legal_moves]
             
-            # Test if the move can actually be parsed and is legal
-            move_obj = None
-            is_legal = False
-            
-            # Try UCI format first
-            if parsed_move in legal_moves_uci:
-                try:
-                    move_obj = chess.Move.from_uci(parsed_move)
-                    is_legal = move_obj in self.board.legal_moves
-                    print(f"DEBUG: UCI move '{parsed_move}' -> {move_obj}, legal: {is_legal}")
-                except:
-                    pass
-            
-            # If UCI failed, try algebraic notation with proper case handling
-            if not is_legal:
-                # Try different case variations for algebraic notation
-                algebraic_variations = [
-                    parsed_move,  # Original case
-                    parsed_move.capitalize(),  # First letter capital: nf6 -> Nf6  
-                    parsed_move.upper(),  # All caps: nf6 -> NF6
-                ]
-                
-                for variation in algebraic_variations:
-                    try:
-                        move_obj = self.board.parse_san(variation)
-                        if move_obj in self.board.legal_moves:
-                            is_legal = True
-                            print(f"DEBUG: Algebraic move '{parsed_move}' -> '{variation}' -> {move_obj}, legal: True")
-                            # Update parsed_move to the working variation for later use
-                            parsed_move = variation
-                            break
-                    except:
-                        continue
-            
-            if not is_legal:
-                # Get legal moves for error display
-                legal_moves_san = [self.board.san(move) for move in self.board.legal_moves]
-                print(f"ERROR: AI suggested illegal move '{parsed_move}' not in legal moves!")
-                print(f"ERROR: Legal UCI moves: {legal_moves_uci[:5]}...")
-                print(f"ERROR: Legal SAN moves: {legal_moves_san[:5]}...")
-                try:
-                    from debug_console import debug_log
-                    debug_log(f"ERROR: Illegal move '{parsed_move}' suggested by AI")
-                    debug_log(f"ERROR: Legal moves: {legal_moves_uci[:5]}...")
-                except:
-                    pass
-                return None  # Force retry with different prompt
-        
-        return parsed_move
+        return None
     
     def get_pgn_history(self, include_headers: bool = True, max_moves: Optional[int] = None) -> str:
         """

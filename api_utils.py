@@ -193,35 +193,52 @@ def parse_chess_move(response: str) -> Optional[str]:
     Returns:
         UCI move string or None if not found
     """
+    print(f"\n🔍 PARSING AI RESPONSE FOR MOVE:")
+    print(f"   Response length: {len(response) if response else 0} characters")
+    
     if not response:
+        print(f"   ❌ Empty response - no move to parse")
         return None
+    
+    print(f"   Response preview: {response[:150]}...")
     
     # Look for MOVE: prefix first - try UCI format
     uci_match = re.search(r'MOVE:\s*([a-h][1-8][a-h][1-8][qrbnQRBN]?)', response, re.IGNORECASE)
     if uci_match:
-        return uci_match.group(1).lower()
+        move = uci_match.group(1).lower()
+        print(f"   ✅ Found UCI move with MOVE: prefix: '{move}'")
+        return move
     
     # Look for MOVE: prefix with algebraic notation (e.g., Nf3, Nbc6, O-O)
     algebraic_match = re.search(r'MOVE:\s*([KQRBN]?[a-h]?[1-8]?x?[a-h][1-8][=QRBN]?[+#]?|O-O-O|O-O)', response, re.IGNORECASE)
     if algebraic_match:
         algebraic_move = algebraic_match.group(1).strip()
-        print(f"DEBUG: Found algebraic move: {algebraic_move}")
-        # Return the algebraic move - it will be converted to UCI in the chess game validation
-        return algebraic_move.lower()
+        print(f"   ✅ Found algebraic move with MOVE: prefix: '{algebraic_move}'")
+        # Return the algebraic move - preserve original case
+        return algebraic_move
     
     # Fallback: look for UCI pattern anywhere in response
     uci_pattern = r'\b([a-h][1-8][a-h][1-8][qrbnQRBN]?)\b'
     matches = re.findall(uci_pattern, response, re.IGNORECASE)
     if matches:
-        return matches[0].lower()
+        move = matches[0].lower()
+        print(f"   ✅ Found UCI move (fallback): '{move}' from matches: {matches}")
+        return move
     
     # Fallback: look for algebraic notation anywhere
     algebraic_pattern = r'\b([KQRBN]?[a-h]?[1-8]?x?[a-h][1-8][=QRBN]?[+#]?|O-O-O|O-O)\b'
     algebraic_matches = re.findall(algebraic_pattern, response, re.IGNORECASE)
     if algebraic_matches:
         algebraic_move = algebraic_matches[0].strip()
-        print(f"DEBUG: Found algebraic move (fallback): {algebraic_move}")
-        return algebraic_move.lower()
+        print(f"   ✅ Found algebraic move (fallback): '{algebraic_move}' from matches: {algebraic_matches}")
+        return algebraic_move
+    
+    print(f"   ❌ No move found in response using any pattern")
+    print(f"   Tried patterns:")
+    print(f"     - UCI with MOVE: prefix")
+    print(f"     - Algebraic with MOVE: prefix") 
+    print(f"     - UCI anywhere in text")
+    print(f"     - Algebraic anywhere in text")
     
     return None
 

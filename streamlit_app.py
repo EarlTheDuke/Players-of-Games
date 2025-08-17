@@ -148,12 +148,27 @@ def main():
                     "board_fen": game.board.fen()
                 })
                 with st.spinner("AI is thinking..."):
-                    success = game.make_move()
+                    # Capture console output for debugging
+                    import io
+                    import sys
+                    from contextlib import redirect_stdout, redirect_stderr
+                    
+                    debug_output = io.StringIO()
+                    with redirect_stdout(debug_output), redirect_stderr(debug_output):
+                        success = game.make_move()
+                    
+                    # Show debug output in expandable section
+                    debug_text = debug_output.getvalue()
+                    if debug_text.strip():
+                        with st.expander("🔍 Debug Output (Move Validation Details)", expanded=not success):
+                            st.code(debug_text, language="text")
+                    
                     if not success:
-                        st.error("❌ Move failed")
+                        st.error("❌ Move failed - Check debug output above for details")
                         log_error("AI move failed", ErrorCategory.GAME_LOGIC, {
                             "current_player": game.current_player,
-                            "move_count": game.move_count
+                            "move_count": game.move_count,
+                            "debug_output": debug_text[:500]  # First 500 chars
                         })
                     else:
                         st.success("✅ Move completed")
