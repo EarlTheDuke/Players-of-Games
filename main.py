@@ -663,7 +663,7 @@ def run_streamlit_app():
                     st.error(f"❌ Claude API error: {str(e)}")
         
         # Add Game Debug Section
-        if st.session_state.game:
+        if hasattr(st.session_state, 'game') and st.session_state.game:
             st.subheader("🎯 Game Debug Info")
             
             # Show current game state details
@@ -788,7 +788,7 @@ def run_streamlit_app():
         except Exception as e:
             st.warning(f"Debug console not available: {e}")
         
-        if st.session_state.game and hasattr(st.session_state.game, 'logger'):
+        if hasattr(st.session_state, 'game') and st.session_state.game and hasattr(st.session_state.game, 'logger'):
             game_history = st.session_state.game.logger.game_history
             
             # Filter for move entries
@@ -805,7 +805,7 @@ def run_streamlit_app():
                 st.info("No moves yet")
         
         # Game statistics
-        if st.session_state.game_history:
+        if hasattr(st.session_state, 'game_history') and st.session_state.game_history:
             st.subheader("🏆 Game Results")
             for i, result in enumerate(st.session_state.game_history):
                 st.write(f"**Game {i+1}:** {result['result']}")
