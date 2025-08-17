@@ -189,6 +189,14 @@ class BaseGame(ABC):
             pass
         
         for attempt in range(max_attempts):
+            # Log move attempt
+            try:
+                from debug_console import debug_log, DebugLevel
+                debug_log(f"Move attempt {attempt + 1}/{max_attempts} for {player_name}", 
+                         DebugLevel.MOVE, "ATTEMPT", player_name, self.move_count + 1)
+            except:
+                pass
+                
             # Get move from AI
             action, reasoning = self.prompt_player()
             
@@ -235,9 +243,15 @@ class BaseGame(ABC):
                 self.failed_moves[player_name].clear()
                 self.next_player()
                 print(f"DEBUG: Move {action} successful, switched to {self.current_player}")
+                
                 try:
-                    from debug_console import debug_log
-                    debug_log(f"SUCCESS: Move {action} applied, switched to {self.current_player}")
+                    from debug_console import debug_log, DebugLevel
+                    debug_log(f"✅ MOVE SUCCESS: {action} by {player_name}", 
+                             DebugLevel.MOVE, "SUCCESS", player_name, self.move_count)
+                    debug_log(f"Reasoning: {reasoning[:100]}...", 
+                             DebugLevel.MOVE, "REASONING", player_name, self.move_count)
+                    debug_log(f"Next player: {self.current_player}", 
+                             DebugLevel.MOVE, "TURN_SWITCH", player_name, self.move_count)
                 except:
                     pass
                 return True
@@ -246,10 +260,13 @@ class BaseGame(ABC):
                 self.failed_moves[player_name].add(action)
                 print(f"DEBUG: Move {action} invalid, attempt {attempt + 1}/{max_attempts}")
                 print(f"DEBUG: Failed moves for {player_name}: {list(self.failed_moves[player_name])}")
+                
                 try:
-                    from debug_console import debug_log
-                    debug_log(f"FAILED: Move {action} invalid, attempt {attempt + 1}/{max_attempts}")
-                    debug_log(f"Failed moves for {player_name}: {list(self.failed_moves[player_name])}")
+                    from debug_console import debug_log, DebugLevel
+                    debug_log(f"❌ MOVE FAILED: {action} by {player_name} (attempt {attempt + 1})", 
+                             DebugLevel.ERROR, "MOVE_ERROR", player_name, self.move_count + 1)
+                    debug_log(f"Failed moves history: {list(self.failed_moves[player_name])}", 
+                             DebugLevel.WARNING, "FAILED_HISTORY", player_name, self.move_count + 1)
                 except:
                     pass
                 if attempt == max_attempts - 1:

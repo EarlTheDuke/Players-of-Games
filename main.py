@@ -305,10 +305,20 @@ def run_streamlit_app():
                 st.session_state.game = None
                 st.session_state.game_history = []
                 
-                # Clear debug console
+                # Clear debug console and set new session info
                 try:
-                    from debug_console import clear
+                    from debug_console import clear, set_session_info, debug_log, DebugLevel
                     clear()
+                    
+                    # Set session info for isolated logging
+                    import uuid
+                    session_id = str(uuid.uuid4())[:8]
+                    game_id = f"{game_type}_{player1}v{player2}_{datetime.now().strftime('%H%M%S')}"
+                    set_session_info(session_id, game_id)
+                    
+                    debug_log(f"🆕 NEW GAME SESSION CREATED", DebugLevel.SESSION, "SETUP")
+                    debug_log(f"Game ID: {game_id}", DebugLevel.SESSION, "SETUP")
+                    debug_log(f"Session ID: {session_id}", DebugLevel.SESSION, "SETUP")
                 except:
                     pass
                 
@@ -322,10 +332,13 @@ def run_streamlit_app():
                 
                 # Add debug logging for new game creation
                 try:
-                    from debug_console import debug_log
-                    debug_log(f"🆕 NEW GAME CREATED: {game_type} - {player1} vs {player2}")
+                    from debug_console import debug_log, DebugLevel
+                    debug_log(f"Game Type: {game_type}", DebugLevel.GAME, "SETUP")
+                    debug_log(f"Player 1: {player1} (White)", DebugLevel.GAME, "SETUP") 
+                    debug_log(f"Player 2: {player2} (Black)", DebugLevel.GAME, "SETUP")
                     if hasattr(st.session_state.game, 'board'):
-                        debug_log(f"Initial board FEN: {st.session_state.game.board.fen()}")
+                        debug_log(f"Initial board FEN: {st.session_state.game.board.fen()}", DebugLevel.GAME, "SETUP")
+                        debug_log(f"Legal moves: {len(st.session_state.game.get_legal_actions())}", DebugLevel.GAME, "SETUP")
                 except:
                     pass
                 
@@ -596,37 +609,100 @@ def run_streamlit_app():
                     legal_moves = st.session_state.game.get_legal_actions()
                     st.write(f"**Legal Moves**: {', '.join(legal_moves)}")
         
-        # Add Live Debug Console
-        st.subheader("🖥️ Live Debug Console")
+        # Enhanced Live Debug Console
+        st.subheader("🖥️ Enhanced Debug Console")
         
-        col_debug1, col_debug2 = st.columns([3, 1])
+        # Debug controls and filters
+        col_debug1, col_debug2, col_debug3, col_debug4 = st.columns(4)
         
         with col_debug1:
-            if st.button("🔄 Refresh Debug Log"):
-                st.rerun()
+            debug_level_filter = st.selectbox(
+                "Filter Level:", 
+                ["All", "ERROR", "WARNING", "VALIDATION", "GAME", "API", "SESSION", "INFO"],
+                key="debug_level_filter"
+            )
         
         with col_debug2:
-            if st.button("🗑️ Clear Debug Log"):
+            debug_category_filter = st.selectbox(
+                "Filter Category:",
+                ["All", "SETUP", "MOVE", "VALIDATION", "PARSING", "API", "GENERAL"],
+                key="debug_category_filter"
+            )
+        
+        with col_debug3:
+            message_count = st.selectbox(
+                "Show Messages:",
+                [25, 50, 100, 200, "All"],
+                index=1,
+                key="debug_message_count"
+            )
+        
+        with col_debug4:
+            if st.button("🔄 Refresh"):
+                st.rerun()
+        
+        # Additional controls
+        col_debug_ctrl1, col_debug_ctrl2, col_debug_ctrl3 = st.columns(3)
+        
+        with col_debug_ctrl1:
+            if st.button("🗑️ Clear Log"):
                 try:
-                    from debug_console import debug_console
-                    debug_console.clear()
+                    from debug_console import clear
+                    clear()
                     st.success("Debug log cleared")
+                    st.rerun()
                 except:
                     pass
         
-        # Show debug messages
+        with col_debug_ctrl2:
+            if st.button("📊 Show Statistics"):
+                try:
+                    from debug_console import get_game_statistics
+                    stats = get_game_statistics()
+                    st.json(stats)
+                except:
+                    st.error("Could not load statistics")
+        
+        with col_debug_ctrl3:
+            if st.button("💾 Export Log"):
+                try:
+                    from debug_console import save_game_log
+                    filepath = save_game_log()
+                    st.success(f"Log saved to: {filepath}")
+                except Exception as e:
+                    st.error(f"Export failed: {e}")
+        
+        # Show filtered debug messages
         try:
-            from debug_console import debug_console
-            messages = debug_console.get_messages(15)
+            from debug_console import get_messages
+            
+            # Apply filters
+            level_filter = None if debug_level_filter == "All" else debug_level_filter
+            category_filter = None if debug_category_filter == "All" else debug_category_filter
+            msg_count = None if message_count == "All" else int(message_count)
+            
+            messages = get_messages(
+                level_filter=level_filter,
+                category_filter=category_filter, 
+                last_n=msg_count
+            )
             
             if messages:
-                st.text("Recent Debug Messages:")
-                debug_text = ""
-                for msg in messages:
-                    debug_text += f"[{msg['timestamp']}] {msg['level']}: {msg['message']}\n"
-                st.code(debug_text, language="text")
+                st.text(f"Debug Messages ({len(messages)} shown):")
+                debug_text = "\n".join(messages)
+                st.code(debug_text, language="text", wrap_lines=True)
+                
+                # Show error summary if there are errors
+                from debug_console import get_error_summary
+                error_summary = get_error_summary()
+                if error_summary:
+                    st.error("**Error Summary:**")
+                    for error_type, count in error_summary.items():
+                        st.write(f"- {error_type}: {count} errors")
+                        
             else:
-                st.info("No debug messages yet. Make a move to see debug output.")
+                st.info("No debug messages match the current filters. Make a move to see debug output.")
+                
         except Exception as e:
             st.warning(f"Debug console not available: {e}")
         

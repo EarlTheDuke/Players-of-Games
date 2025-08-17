@@ -295,19 +295,25 @@ Your move:"""
         print(f"DEBUG: Legal moves: {[str(m) for m in list(self.board.legal_moves)[:10]]}...")
         
         try:
-            from debug_console import debug_log
-            debug_log(f"Chess Parse: AI said '{parsed_move}' from response starting: {response[:50]}...")
-            debug_log(f"Chess Parse: Current FEN: {self.board.fen()}")
+            from debug_console import debug_log, DebugLevel
+            debug_log(f"AI Response: '{parsed_move}' from: {response[:100]}...", 
+                     DebugLevel.VALIDATION, "PARSING", self.current_player, self.board.fullmove_number)
+            debug_log(f"Board State: {self.board.fen()}", 
+                     DebugLevel.VALIDATION, "PARSING", self.current_player, self.board.fullmove_number)
         except:
             pass
         
         # Critical validation: Check if parsed move is legal and can be parsed correctly
         if parsed_move:
-            # Add board state debugging to catch desync issues
+            # Add comprehensive validation debugging
             try:
-                from debug_console import debug_log
-                debug_log(f"🔍 VALIDATION: Testing move '{parsed_move}' on board FEN: {self.board.fen()}")
-                debug_log(f"🔍 VALIDATION: Current player: {self.current_player}, Board turn: {'White' if self.board.turn == chess.WHITE else 'Black'}")
+                from debug_console import debug_log, DebugLevel
+                debug_log(f"Starting validation for move: '{parsed_move}'", 
+                         DebugLevel.VALIDATION, "VALIDATION", self.current_player, self.board.fullmove_number)
+                debug_log(f"Board FEN: {self.board.fen()}", 
+                         DebugLevel.VALIDATION, "VALIDATION", self.current_player, self.board.fullmove_number)
+                debug_log(f"Player: {self.current_player}, Board turn: {'White' if self.board.turn == chess.WHITE else 'Black'}", 
+                         DebugLevel.VALIDATION, "VALIDATION", self.current_player, self.board.fullmove_number)
             except:
                 pass
             
@@ -319,13 +325,32 @@ Your move:"""
             is_legal = False
             
             # Try UCI format first
+            try:
+                from debug_console import debug_log, DebugLevel
+                debug_log(f"Testing UCI format: '{parsed_move}'", 
+                         DebugLevel.VALIDATION, "UCI_TEST", self.current_player, self.board.fullmove_number)
+            except:
+                pass
+                
             if parsed_move in legal_moves_uci:
                 try:
                     move_obj = chess.Move.from_uci(parsed_move)
                     is_legal = move_obj in self.board.legal_moves
                     print(f"DEBUG: UCI move '{parsed_move}' -> {move_obj}, legal: {is_legal}")
-                except:
-                    pass
+                    
+                    try:
+                        from debug_console import debug_log, DebugLevel
+                        debug_log(f"✅ UCI SUCCESS: '{parsed_move}' -> {move_obj}, legal: {is_legal}", 
+                                 DebugLevel.VALIDATION, "UCI_SUCCESS", self.current_player, self.board.fullmove_number)
+                    except:
+                        pass
+                except Exception as e:
+                    try:
+                        from debug_console import debug_log, DebugLevel
+                        debug_log(f"❌ UCI FAILED: '{parsed_move}' -> {e}", 
+                                 DebugLevel.ERROR, "UCI_ERROR", self.current_player, self.board.fullmove_number)
+                    except:
+                        pass
             
             # If UCI failed, try algebraic notation with proper case handling
             if not is_legal:
@@ -336,30 +361,62 @@ Your move:"""
                     parsed_move.upper(),  # All caps: nf6 -> NF6
                 ]
                 
-                for variation in algebraic_variations:
+                try:
+                    from debug_console import debug_log, DebugLevel
+                    debug_log(f"Testing algebraic variations: {algebraic_variations}", 
+                             DebugLevel.VALIDATION, "SAN_TEST", self.current_player, self.board.fullmove_number)
+                except:
+                    pass
+                    
+                for i, variation in enumerate(algebraic_variations):
                     try:
                         move_obj = self.board.parse_san(variation)
                         if move_obj in self.board.legal_moves:
                             is_legal = True
                             print(f"DEBUG: Algebraic move '{parsed_move}' -> '{variation}' -> {move_obj}, legal: True")
+                            
+                            try:
+                                from debug_console import debug_log, DebugLevel
+                                debug_log(f"✅ SAN SUCCESS: '{parsed_move}' -> '{variation}' -> {move_obj}", 
+                                         DebugLevel.VALIDATION, "SAN_SUCCESS", self.current_player, self.board.fullmove_number)
+                            except:
+                                pass
+                                
                             # Update parsed_move to the working variation for later use
                             parsed_move = variation
                             break
-                    except:
+                    except Exception as e:
+                        try:
+                            from debug_console import debug_log, DebugLevel
+                            debug_log(f"❌ SAN FAILED: '{variation}' -> {e}", 
+                                     DebugLevel.VALIDATION, "SAN_TEST", self.current_player, self.board.fullmove_number)
+                        except:
+                            pass
                         continue
             
             if not is_legal:
-                # Get legal moves for error display
+                # Get legal moves for comprehensive error display
                 legal_moves_san = [self.board.san(move) for move in self.board.legal_moves]
                 print(f"ERROR: AI suggested illegal move '{parsed_move}' not in legal moves!")
                 print(f"ERROR: Legal UCI moves: {legal_moves_uci[:5]}...")
                 print(f"ERROR: Legal SAN moves: {legal_moves_san[:5]}...")
+                
                 try:
-                    from debug_console import debug_log
-                    debug_log(f"ERROR: Illegal move '{parsed_move}' suggested by AI")
-                    debug_log(f"ERROR: Legal moves: {legal_moves_uci[:5]}...")
+                    from debug_console import debug_log, DebugLevel
+                    debug_log(f"❌ VALIDATION FAILED: '{parsed_move}' is not legal", 
+                             DebugLevel.ERROR, "VALIDATION_ERROR", self.current_player, self.board.fullmove_number)
+                    debug_log(f"Legal UCI moves ({len(legal_moves_uci)}): {legal_moves_uci[:8]}", 
+                             DebugLevel.ERROR, "VALIDATION_ERROR", self.current_player, self.board.fullmove_number)
+                    debug_log(f"Legal SAN moves ({len(legal_moves_san)}): {legal_moves_san[:8]}", 
+                             DebugLevel.ERROR, "VALIDATION_ERROR", self.current_player, self.board.fullmove_number)
+                    
+                    # Check if the move looks like it should be legal
+                    if any(parsed_move.lower() in san.lower() for san in legal_moves_san):
+                        debug_log(f"⚠️  POTENTIAL CASE ISSUE: '{parsed_move}' similar to legal moves", 
+                                 DebugLevel.WARNING, "CASE_WARNING", self.current_player, self.board.fullmove_number)
                 except:
                     pass
+                    
                 return None  # Force retry with different prompt
         
         return parsed_move
