@@ -218,30 +218,115 @@ def main():
         # Show FEN
         st.text(f"FEN: {game.board.fen()}")
         
-        # Game log
-        st.subheader("📝 Game Log")
+        # Game log - Enhanced to show complete game history
+        st.subheader("📝 Complete Game Log")
         try:
             # Access the game history directly from the logger
             if hasattr(game.logger, 'game_history'):
                 log_entries = game.logger.game_history
                 if log_entries:
-                    for entry in log_entries[-5:]:  # Show last 5 moves
-                        if isinstance(entry, dict) and 'move' in entry:
-                            status = "✅" if entry.get('is_valid', True) else "❌"
-                            move = entry.get('move', 'Unknown')
-                            reasoning = entry.get('reasoning', 'No reasoning')[:100]
-                            player = entry.get('player', 'Unknown')
-                            move_num = entry.get('move_number', '?')
-                            st.text(f"{status} Move {move_num} - {player.upper()}: {move}")
-                            st.text(f"   Reasoning: {reasoning}...")
-                            st.text("")  # Empty line for spacing
+                    # Show recent activity summary
+                    if len(log_entries) > 0:
+                        last_entry = log_entries[-1]
+                        last_player = "Grok" if last_entry.get('player') == "player1" else "Claude"
+                        last_move = last_entry.get('move', 'Unknown')
+                        last_time = ""
+                        if last_entry.get('timestamp'):
+                            try:
+                                from datetime import datetime
+                                dt = datetime.fromisoformat(last_entry['timestamp'].replace('Z', '+00:00'))
+                                last_time = dt.strftime("%H:%M:%S")
+                            except:
+                                pass
+                        
+                        st.info(f"🎯 **Latest Move:** {last_player} played `{last_move}` at {last_time}")
+                    
+                    # Create a scrollable container for the complete game log
+                    log_container = st.container()
+                    with log_container:
+                        st.markdown("**📚 Complete Game History:**")
+                        st.markdown("*Click on any move to see detailed AI reasoning*")
+                        
+                        # Show ALL moves, not just the last 5
+                        for entry in log_entries:
+                            if isinstance(entry, dict) and 'move' in entry:
+                                status = "✅" if entry.get('is_valid', True) else "❌"
+                                move = entry.get('move', 'Unknown')
+                                reasoning = entry.get('reasoning', 'No reasoning')
+                                player = entry.get('player', 'Unknown')
+                                move_num = entry.get('move_number', '?')
+                                timestamp = entry.get('timestamp', '')
+                                game_state = entry.get('game_state', '')
+                                
+                                # Format timestamp to show just time
+                                time_str = ""
+                                if timestamp:
+                                    try:
+                                        from datetime import datetime
+                                        dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                                        time_str = dt.strftime("%H:%M:%S")
+                                    except:
+                                        time_str = timestamp[-8:] if len(timestamp) > 8 else timestamp
+                                
+                                # Player color indicator and styling
+                                if player == "player1":
+                                    player_color = "🤖"
+                                    player_name = "Grok"
+                                    player_style = "color: #2E86C1;"  # Blue for Grok
+                                else:
+                                    player_color = "🧠"
+                                    player_name = "Claude"
+                                    player_style = "color: #A569BD;"  # Purple for Claude
+                                
+                                # Create an expandable section for each move
+                                with st.expander(f"{status} Move {move_num} - {player_color} {player_name}: {move} ({time_str})", expanded=(move_num == len(log_entries))):
+                                    # Move details in a nice format
+                                    col1, col2 = st.columns([1, 3])
+                                    
+                                    with col1:
+                                        st.markdown(f"**Player:** <span style='{player_style}'>{player_name}</span>", unsafe_allow_html=True)
+                                        st.markdown(f"**Move:** `{move}`")
+                                        st.markdown(f"**Time:** {time_str}")
+                                        st.markdown(f"**Valid:** {'Yes' if entry.get('is_valid', True) else 'No'}")
+                                    
+                                    with col2:
+                                        st.markdown("**AI Reasoning & Strategy:**")
+                                        # Show more reasoning (up to 500 characters for detailed view)
+                                        if len(reasoning) > 500:
+                                            reasoning_short = reasoning[:200] + "..."
+                                            reasoning_full = reasoning
+                                            st.markdown(reasoning_short)
+                                            
+                                            if st.button(f"Show Full Reasoning", key=f"full_reasoning_{move_num}"):
+                                                st.markdown("**Full Reasoning:**")
+                                                st.markdown(reasoning_full)
+                                        else:
+                                            st.markdown(reasoning)
+                                    
+                                    # Show additional context if available
+                                    if game_state:
+                                        with st.expander("🔍 Technical Details", expanded=False):
+                                            st.text(f"Board State (FEN): {game_state}")
+                                
+                                # Add spacing between moves
+                                st.markdown("")
+                        
+                        # Show game statistics
+                        total_moves = len(log_entries)
+                        valid_moves = len([e for e in log_entries if e.get('is_valid', True)])
+                        invalid_moves = total_moves - valid_moves
+                        
+                        st.markdown(f"**Game Stats:** {total_moves} total moves | {valid_moves} valid | {invalid_moves} invalid")
+                        
                 else:
-                    st.text("No moves yet - click 'Next Move' to start!")
+                    st.info("🎮 No moves yet - click 'Next Move' to start the game!")
+                    st.markdown("The complete game history will appear here as moves are made.")
             else:
-                st.text("Game log not available - moves will appear here")
+                st.warning("Game log not available - moves will appear here when the game starts")
         except Exception as e:
-            st.text(f"Game log error: {e}")
+            st.error(f"Game log error: {e}")
             st.text("Moves will appear here when the game starts")
+            log_error("Game log display error", ErrorCategory.UI_ERROR, {"error": str(e)}, e)
     
     # Error Log Viewer
     st.sidebar.subheader("🐛 Error & Bug Log")
