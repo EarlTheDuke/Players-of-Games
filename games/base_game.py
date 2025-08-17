@@ -42,6 +42,9 @@ class BaseGame(ABC):
         # Initialize logger
         self.logger = GameLogger(self.get_game_name(), log_to_file)
         
+        # Track failed moves to prevent AI from repeating the same mistakes
+        self.failed_moves = {player: set() for player in players.keys()}
+        
     @property
     def current_player(self) -> str:
         """Get the current player name."""
@@ -228,7 +231,8 @@ class BaseGame(ABC):
             )
             
             if is_valid:
-                # Move was successful
+                # Move was successful - clear failed moves for this player
+                self.failed_moves[player_name].clear()
                 self.next_player()
                 print(f"DEBUG: Move {action} successful, switched to {self.current_player}")
                 try:
@@ -238,11 +242,14 @@ class BaseGame(ABC):
                     pass
                 return True
             else:
-                # Invalid move, try again
+                # Invalid move, track it and try again
+                self.failed_moves[player_name].add(action)
                 print(f"DEBUG: Move {action} invalid, attempt {attempt + 1}/{max_attempts}")
+                print(f"DEBUG: Failed moves for {player_name}: {list(self.failed_moves[player_name])}")
                 try:
                     from debug_console import debug_log
                     debug_log(f"FAILED: Move {action} invalid, attempt {attempt + 1}/{max_attempts}")
+                    debug_log(f"Failed moves for {player_name}: {list(self.failed_moves[player_name])}")
                 except:
                     pass
                 if attempt == max_attempts - 1:

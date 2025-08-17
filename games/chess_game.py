@@ -174,24 +174,43 @@ class ChessGame(BaseGame):
         
         legal_moves = self.get_legal_actions()
         
-        # Show legal moves in both UCI and algebraic notation for better AI understanding
+        # Show legal moves in a clear, comprehensive format for AI understanding
         legal_moves_uci = legal_moves  # These are already UCI from get_legal_actions()
         legal_moves_san = [self.board.san(chess.Move.from_uci(move)) for move in legal_moves_uci]
         
-        # Limit the number of legal moves shown to avoid very long prompts
-        if len(legal_moves_uci) > 8:
-            # Show first 8 moves in both formats for clarity
-            shown_uci = legal_moves_uci[:8]
-            shown_san = legal_moves_san[:8]
-            shown_moves = [f"{uci} ({san})" for uci, san in zip(shown_uci, shown_san)]
-            shown_moves.append(f"... and {len(legal_moves_uci) - 8} more moves")
+        # Group moves by type for better AI understanding
+        piece_moves = []
+        pawn_moves = []
+        
+        for uci, san in zip(legal_moves_uci, legal_moves_san):
+            if san[0].isupper() and san[0] in 'NBRQK':
+                # Piece moves (Knight, Bishop, Rook, Queen, King)
+                piece_moves.append(f"{san} ({uci})")
+            else:
+                # Pawn moves and castling
+                pawn_moves.append(f"{san} ({uci})")
+        
+        # Limit display to avoid overwhelming the AI
+        max_moves = 10
+        if len(legal_moves_uci) > max_moves:
+            # Show most important moves first (piece moves, then pawn moves)
+            shown_moves = piece_moves[:6] + pawn_moves[:4]
+            if len(legal_moves_uci) > max_moves:
+                shown_moves.append(f"... and {len(legal_moves_uci) - max_moves} more moves")
         else:
-            shown_moves = [f"{uci} ({san})" for uci, san in zip(legal_moves_uci, legal_moves_san)]
+            shown_moves = piece_moves + pawn_moves
         
         # Get fresh board state
         current_fen = self.get_state_text()
         current_board_display = self.get_state_display()
         move_number = self.board.fullmove_number
+        
+        # Check for failed moves to provide feedback to AI
+        failed_moves_text = ""
+        if hasattr(self, 'failed_moves') and self.current_player in self.failed_moves:
+            failed_moves_list = list(self.failed_moves[self.current_player])
+            if failed_moves_list:
+                failed_moves_text = f"\n⚠️  IMPORTANT: You previously tried these moves which failed validation: {', '.join(failed_moves_list)}. Please choose a DIFFERENT move from the legal moves list.\n"
         
         # Get PGN history and opening recognition
         pgn_history = self.get_pgn_history(include_headers=True, max_moves=30)  # Last 30 moves for context
@@ -214,7 +233,7 @@ class ChessGame(BaseGame):
         
         # Enhanced prompt with strategic guidance and PGN context
         enhanced_prompt = f"""You are an expert chess player (2000+ ELO) playing as {color_name}. Your priorities: king safety, piece development, center control, and tactical awareness.
-
+{failed_moves_text}
 === GAME HISTORY (PGN) - ANALYZE FOR STRATEGIC CONTEXT ===
 {pgn_history}
 
@@ -282,19 +301,48 @@ Your move:"""
         except:
             pass
         
-        # Critical validation: Check if parsed move is legal (support both UCI and algebraic)
+        # Critical validation: Check if parsed move is legal and can be parsed correctly
         if parsed_move:
-            # Get legal moves in both UCI and SAN formats
-            legal_moves_uci = [str(move) for move in self.board.legal_moves]  # UCI format
-            legal_moves_san = [self.board.san(move) for move in self.board.legal_moves]  # Algebraic format
-            legal_moves_san_lower = [san.lower() for san in legal_moves_san]
+            # Get legal moves in UCI format
+            legal_moves_uci = [str(move) for move in self.board.legal_moves]
             
-            # Check if the parsed move is legal in any format
-            is_legal = (parsed_move in legal_moves_uci or 
-                       parsed_move in legal_moves_san_lower or
-                       parsed_move.upper() in legal_moves_san)
+            # Test if the move can actually be parsed and is legal
+            move_obj = None
+            is_legal = False
+            
+            # Try UCI format first
+            if parsed_move in legal_moves_uci:
+                try:
+                    move_obj = chess.Move.from_uci(parsed_move)
+                    is_legal = move_obj in self.board.legal_moves
+                    print(f"DEBUG: UCI move '{parsed_move}' -> {move_obj}, legal: {is_legal}")
+                except:
+                    pass
+            
+            # If UCI failed, try algebraic notation with proper case handling
+            if not is_legal:
+                # Try different case variations for algebraic notation
+                algebraic_variations = [
+                    parsed_move,  # Original case
+                    parsed_move.capitalize(),  # First letter capital: nf6 -> Nf6  
+                    parsed_move.upper(),  # All caps: nf6 -> NF6
+                ]
+                
+                for variation in algebraic_variations:
+                    try:
+                        move_obj = self.board.parse_san(variation)
+                        if move_obj in self.board.legal_moves:
+                            is_legal = True
+                            print(f"DEBUG: Algebraic move '{parsed_move}' -> '{variation}' -> {move_obj}, legal: True")
+                            # Update parsed_move to the working variation for later use
+                            parsed_move = variation
+                            break
+                    except:
+                        continue
             
             if not is_legal:
+                # Get legal moves for error display
+                legal_moves_san = [self.board.san(move) for move in self.board.legal_moves]
                 print(f"ERROR: AI suggested illegal move '{parsed_move}' not in legal moves!")
                 print(f"ERROR: Legal UCI moves: {legal_moves_uci[:5]}...")
                 print(f"ERROR: Legal SAN moves: {legal_moves_san[:5]}...")
