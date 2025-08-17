@@ -179,6 +179,11 @@ class BaseGame(ABC):
             return False
         
         print(f"DEBUG: Making move for {player_name}, {len(legal_actions)} legal moves available")
+        try:
+            from debug_console import debug_log
+            debug_log(f"Making move for {player_name}, {len(legal_actions)} legal moves available")
+        except:
+            pass
         
         for attempt in range(max_attempts):
             # Get move from AI

@@ -412,6 +412,69 @@ def run_streamlit_app():
                 except Exception as e:
                     st.error(f"❌ Claude API error: {str(e)}")
         
+        # Add Game Debug Section
+        if st.session_state.game:
+            st.subheader("🎯 Game Debug Info")
+            
+            # Show current game state details
+            with st.expander("Current Game State Details"):
+                if hasattr(st.session_state.game, 'board'):  # Chess game
+                    st.write(f"**FEN**: {st.session_state.game.get_state_text()}")
+                    st.write(f"**Turn**: {'White' if st.session_state.game.board.turn else 'Black'}")
+                    st.write(f"**Move Count**: {st.session_state.game.board.fullmove_number}")
+                    st.write(f"**Current Player**: {st.session_state.game.current_player}")
+                    
+                    # Show player color mapping
+                    if hasattr(st.session_state.game, 'player_colors'):
+                        st.write("**Player Colors**:")
+                        for player, color in st.session_state.game.player_colors.items():
+                            color_name = "White" if color else "Black"
+                            st.write(f"  - {player}: {color_name}")
+                    
+                    # Show legal moves
+                    legal_moves = st.session_state.game.get_legal_actions()
+                    st.write(f"**Legal Moves ({len(legal_moves)})**: {', '.join(legal_moves[:10])}{'...' if len(legal_moves) > 10 else ''}")
+                
+                else:  # Other games
+                    st.write(f"**Game State**: {st.session_state.game.get_state_text()}")
+                    st.write(f"**Current Player**: {st.session_state.game.current_player}")
+                    legal_moves = st.session_state.game.get_legal_actions()
+                    st.write(f"**Legal Moves**: {', '.join(legal_moves)}")
+        
+        # Add Live Debug Console
+        st.subheader("🖥️ Live Debug Console")
+        
+        col_debug1, col_debug2 = st.columns([3, 1])
+        
+        with col_debug1:
+            if st.button("🔄 Refresh Debug Log"):
+                st.rerun()
+        
+        with col_debug2:
+            if st.button("🗑️ Clear Debug Log"):
+                try:
+                    from debug_console import debug_console
+                    debug_console.clear()
+                    st.success("Debug log cleared")
+                except:
+                    pass
+        
+        # Show debug messages
+        try:
+            from debug_console import debug_console
+            messages = debug_console.get_messages(15)
+            
+            if messages:
+                st.text("Recent Debug Messages:")
+                debug_text = ""
+                for msg in messages:
+                    debug_text += f"[{msg['timestamp']}] {msg['level']}: {msg['message']}\n"
+                st.code(debug_text, language="text")
+            else:
+                st.info("No debug messages yet. Make a move to see debug output.")
+        except Exception as e:
+            st.warning(f"Debug console not available: {e}")
+        
         if st.session_state.game and hasattr(st.session_state.game, 'logger'):
             game_history = st.session_state.game.logger.game_history
             

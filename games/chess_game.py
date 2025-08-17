@@ -113,6 +113,13 @@ class ChessGame(BaseGame):
             print(f"DEBUG: Move legal: {move in self.board.legal_moves}")
             print(f"DEBUG: Legal moves: {[str(m) for m in list(self.board.legal_moves)[:10]]}...")
             
+            try:
+                from debug_console import debug_log
+                debug_log(f"Chess: Attempting {action} for {self.current_player}")
+                debug_log(f"Chess: Turn={'White' if self.board.turn == chess.WHITE else 'Black'}, Legal={move in self.board.legal_moves}")
+            except:
+                pass
+            
             # Check if move is legal
             if move in self.board.legal_moves:
                 # Store move in SAN notation for PGN
