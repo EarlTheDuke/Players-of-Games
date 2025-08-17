@@ -76,15 +76,35 @@ def call_grok(prompt: str, api_key: str, model: str = "grok-beta") -> Optional[s
             response.raise_for_status()
             
             data = response.json()
+            debug_log(f"🔍 GROK RAW RESPONSE: {json.dumps(data, indent=2)[:500]}...", 
+                     DebugLevel.API, "GROK_DEBUG")
+            
             if 'choices' in data and len(data['choices']) > 0:
-                content = data['choices'][0]['message']['content']
-                debug_log(f"✅ GROK SUCCESS: Content length={len(content)} chars", 
-                         DebugLevel.API, "GROK_SUCCESS")
-                debug_log(f"✅ GROK CONTENT PREVIEW: {content[:200]}...", 
-                         DebugLevel.API, "GROK_SUCCESS")
-                return content
+                choice = data['choices'][0]
+                debug_log(f"🔍 GROK CHOICE STRUCTURE: {json.dumps(choice, indent=2)[:300]}...", 
+                         DebugLevel.API, "GROK_DEBUG")
+                
+                # Check if message exists and has content
+                if 'message' in choice and 'content' in choice['message']:
+                    content = choice['message']['content']
+                    if content and content.strip():  # Ensure content is not empty or whitespace
+                        debug_log(f"✅ GROK SUCCESS: Content length={len(content)} chars", 
+                                 DebugLevel.API, "GROK_SUCCESS")
+                        debug_log(f"✅ GROK CONTENT PREVIEW: {content[:200]}...", 
+                                 DebugLevel.API, "GROK_SUCCESS")
+                        return content
+                    else:
+                        debug_log(f"❌ GROK EMPTY CONTENT: Message exists but content is empty/whitespace", 
+                                 DebugLevel.ERROR, "GROK_ERROR")
+                        debug_log(f"❌ GROK RAW CONTENT: '{content}' (length: {len(content) if content else 0})", 
+                                 DebugLevel.ERROR, "GROK_ERROR")
+                        return None
+                else:
+                    debug_log(f"❌ GROK MISSING MESSAGE: Choice has no 'message' or 'content' field", 
+                             DebugLevel.ERROR, "GROK_ERROR")
+                    return None
             else:
-                debug_log(f"❌ GROK FORMAT ERROR: Unexpected response format: {data}", 
+                debug_log(f"❌ GROK FORMAT ERROR: No choices in response: {data}", 
                          DebugLevel.ERROR, "GROK_ERROR")
                 return None
                 
