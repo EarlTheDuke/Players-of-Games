@@ -162,6 +162,19 @@ def main():
                     if debug_text.strip():
                         with st.expander("🔍 Debug Output (Move Validation Details)", expanded=not success):
                             st.code(debug_text, language="text")
+                            
+                            # Add copy button for easy sharing
+                            if st.button("📋 Copy Debug Output", key=f"copy_debug_{game.move_count}"):
+                                st.code(debug_text, language="text")
+                                st.success("✅ Debug output is displayed above - you can copy it from the text box")
+                            
+                            # Also save debug output to error logger for export
+                            if not success:
+                                log_error("Move validation failed with debug output", ErrorCategory.VALIDATION, {
+                                    "current_player": game.current_player,
+                                    "move_count": game.move_count,
+                                    "full_debug_output": debug_text
+                                })
                     
                     if not success:
                         st.error("❌ Move failed - Check debug output above for details")
@@ -399,6 +412,27 @@ def main():
         except Exception as e:
             st.sidebar.error(f"Error log viewer failed: {e}")
     
+    # Debug output viewer
+    with st.sidebar.expander("🔍 Recent Debug Output", expanded=False):
+        try:
+            # Get recent validation errors with debug output
+            validation_logs = error_logger.get_logs(ErrorLevel.ERROR, ErrorCategory.VALIDATION, last_n=3)
+            
+            if validation_logs:
+                for i, log in enumerate(validation_logs):
+                    if 'full_debug_output' in log.get('context', {}):
+                        debug_output = log['context']['full_debug_output']
+                        timestamp = log['timestamp'][11:19]  # Just time
+                        player = log['context'].get('current_player', 'Unknown')
+                        
+                        st.text(f"🔍 [{timestamp}] {player} move failed")
+                        if st.button(f"Show Debug Details", key=f"show_debug_{i}"):
+                            st.code(debug_output[:500] + "..." if len(debug_output) > 500 else debug_output, language="text")
+            else:
+                st.text("No recent validation failures")
+        except Exception as e:
+            st.error(f"Debug viewer error: {e}")
+    
     # Export and clear controls
     with st.sidebar.expander("🔧 Log Management", expanded=False):
         col1, col2 = st.columns(2)
@@ -408,6 +442,7 @@ def main():
                 try:
                     filepath = error_logger.export_logs()
                     st.success(f"Exported to: {os.path.basename(filepath)}")
+                    st.info(f"📁 Full path: {filepath}")
                     log_info("Error logs exported", ErrorCategory.USER_ACTION, {"filepath": filepath})
                 except Exception as e:
                     st.error(f"Export failed: {e}")
