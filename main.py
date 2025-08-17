@@ -356,7 +356,7 @@ def run_streamlit_app():
                         highlight_squares=highlight_squares,
                         board_size=480
                     )
-                    st.components.v1.html(board_html, height=520, width=680)  # Adjusted width to prevent cutoff
+                    st.components.v1.html(board_html, height=520, width=660)  # Further reduced width to prevent cutoff
                     
                     # Position details in expandable section
                     with st.expander("📋 Position Details (FEN & Text)", expanded=False):

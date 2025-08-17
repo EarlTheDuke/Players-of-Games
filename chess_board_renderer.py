@@ -31,16 +31,16 @@ def render_chess_board_with_info(board: chess.Board, player_info=None, highlight
     board_html = render_chess_board(board, highlight_squares, board_size)
     
     # Add player info and captured pieces panel
-    info_panel_width = 180  # Reduced width to prevent cutoff
+    info_panel_width = 160  # Further reduced width to prevent cutoff
     total_width = board_size + info_panel_width + 15  # Reduced spacing
     
     info_panel_html = f"""
-    <div style="width: 100%; max-width: {total_width}px; margin: 0 auto; overflow: hidden;">
+    <div style="width: 100%; max-width: {total_width}px; margin: 0; overflow: visible;">
         <div style="display: flex; gap: 15px; align-items: flex-start;">
             <div style="flex: 0 0 {board_size}px;">
                 {board_html}
             </div>
-            <div style="flex: 0 0 {info_panel_width}px; background: #F0D9B5; border: 3px solid #8B4513; border-radius: 8px; padding: 12px; font-family: Arial, sans-serif; box-sizing: border-box; height: {board_size}px; overflow-y: auto;">
+            <div style="flex: 0 0 {info_panel_width}px; background: #F0D9B5; border: 3px solid #8B4513; border-radius: 8px; padding: 12px; font-family: Arial, sans-serif; box-sizing: border-box; margin-top: 3px;">
             <!-- Black Player Info (Top) -->
             <div style="margin-bottom: 20px; text-align: center;">
                 <div style="background: #2C2C2C; color: white; padding: 8px; border-radius: 5px; margin-bottom: 10px;">
