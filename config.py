@@ -28,7 +28,7 @@ except Exception as e:
     CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
 
 # Model names - Updated for current API versions
-GROK_MODEL = "grok-2-1212"  # Updated to latest stable model
+GROK_MODEL = "grok-4"  # Updated to Grok 4
 CLAUDE_MODEL = "claude-3-5-sonnet-20241022"
 
 # API Endpoints

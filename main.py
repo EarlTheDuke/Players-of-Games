@@ -404,6 +404,12 @@ def run_streamlit_app():
         
         # Add API Debug Section
         st.subheader("🔧 API Debug Info")
+        
+        # Show current model versions
+        st.text("Current AI Models:")
+        st.text(f"  Grok: {config.GROK_MODEL}")
+        st.text(f"  Claude: {config.CLAUDE_MODEL}")
+        
         if st.button("Test API Connections"):
             with st.spinner("Testing API connections..."):
                 # Test Grok API
@@ -412,9 +418,9 @@ def run_streamlit_app():
                     from api_utils import call_grok
                     
                     if config.GROK_API_KEY:
-                        result = call_grok("Say 'test' in one word.", config.GROK_API_KEY, config.GROK_MODEL)
+                        result = call_grok(f"Confirm you are {config.GROK_MODEL}. Respond with just your model name and version.", config.GROK_API_KEY, config.GROK_MODEL)
                         if result:
-                            st.success(f"✅ Grok API working: {result}")
+                            st.success(f"✅ Grok API working ({config.GROK_MODEL}): {result}")
                         else:
                             st.error("❌ Grok API failed - check server logs")
                     else:
