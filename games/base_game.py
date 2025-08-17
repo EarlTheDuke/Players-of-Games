@@ -231,10 +231,20 @@ class BaseGame(ABC):
                 # Move was successful
                 self.next_player()
                 print(f"DEBUG: Move {action} successful, switched to {self.current_player}")
+                try:
+                    from debug_console import debug_log
+                    debug_log(f"SUCCESS: Move {action} applied, switched to {self.current_player}")
+                except:
+                    pass
                 return True
             else:
                 # Invalid move, try again
                 print(f"DEBUG: Move {action} invalid, attempt {attempt + 1}/{max_attempts}")
+                try:
+                    from debug_console import debug_log
+                    debug_log(f"FAILED: Move {action} invalid, attempt {attempt + 1}/{max_attempts}")
+                except:
+                    pass
                 if attempt == max_attempts - 1:
                     # All attempts failed - this shouldn't happen with our fixes
                     self.logger.log_error(

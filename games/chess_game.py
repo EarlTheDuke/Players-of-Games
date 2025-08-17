@@ -164,24 +164,44 @@ class ChessGame(BaseGame):
         else:
             shown_moves = legal_moves
         
+        # Get fresh board state
+        current_fen = self.get_state_text()
+        current_board_display = self.get_state_display()
+        move_number = self.board.fullmove_number
+        
+        # Debug: Log what we're showing the AI
+        print(f"DEBUG: Showing AI - FEN: {current_fen}")
+        print(f"DEBUG: Showing AI - Move #{move_number}, {color_name} to move")
+        print(f"DEBUG: Showing AI - Legal moves: {shown_moves[:5]}...")
+        
+        try:
+            from debug_console import debug_log
+            debug_log(f"Prompt: {color_name} move #{move_number}, {len(shown_moves)} legal moves")
+            debug_log(f"Prompt: FEN={current_fen}")
+        except:
+            pass
+        
         # Enhanced prompt with clearer instructions
         enhanced_prompt = f"""You are playing chess as {color_name}.
 
-CURRENT POSITION (FEN): {self.get_state_text()}
+CRITICAL: This is move #{move_number}. You are {color_name}. 
+
+CURRENT POSITION (FEN): {current_fen}
 
 CURRENT BOARD:
-{self.get_state_display()}
+{current_board_display}
 
 YOUR LEGAL MOVES (UCI format): {", ".join(shown_moves)}
 
-IMPORTANT INSTRUCTIONS:
-1. You are playing as {color_name} - only move {color_name} pieces
-2. Choose ONLY from the legal moves listed above
-3. Respond with a move in UCI format (e.g., e2e4, g1f3)
-4. The current position shows move {self.board.fullmove_number}
+ABSOLUTELY CRITICAL RULES:
+1. You MUST choose EXACTLY one move from the legal moves list above
+2. Do NOT make up moves - only use moves from the legal moves list
+3. You are {color_name} - only move {color_name} pieces
+4. Respond ONLY with a move in UCI format (e.g., e2e4, g1f3, not e1e2 unless it's in the legal moves)
+5. This is move #{move_number} - the board has changed since move 1
 
 Format your response exactly like this:
-MOVE: [choose one from legal moves above]
+MOVE: [choose EXACTLY one from legal moves above]
 REASONING: [brief explanation of your choice]
 
 Your move:"""
@@ -190,7 +210,36 @@ Your move:"""
     
     def parse_action_from_response(self, response: str) -> Optional[str]:
         """Parse a UCI move from the AI's response."""
-        return parse_chess_move(response)
+        parsed_move = parse_chess_move(response)
+        
+        # Debug: Show what we parsed
+        print(f"DEBUG: AI Response: {response[:200]}...")
+        print(f"DEBUG: Parsed move: {parsed_move}")
+        print(f"DEBUG: Current FEN: {self.board.fen()}")
+        print(f"DEBUG: Legal moves: {[str(m) for m in list(self.board.legal_moves)[:10]]}...")
+        
+        try:
+            from debug_console import debug_log
+            debug_log(f"Chess Parse: AI said '{parsed_move}' from response starting: {response[:50]}...")
+            debug_log(f"Chess Parse: Current FEN: {self.board.fen()}")
+        except:
+            pass
+        
+        # Critical validation: Check if parsed move is in legal moves
+        if parsed_move:
+            legal_moves = [str(move) for move in self.board.legal_moves]
+            if parsed_move not in legal_moves:
+                print(f"ERROR: AI suggested illegal move '{parsed_move}' not in legal moves!")
+                print(f"ERROR: Legal moves are: {legal_moves[:10]}...")
+                try:
+                    from debug_console import debug_log
+                    debug_log(f"ERROR: Illegal move '{parsed_move}' suggested by AI")
+                    debug_log(f"ERROR: Legal moves: {legal_moves[:5]}...")
+                except:
+                    pass
+                return None  # Force retry with different prompt
+        
+        return parsed_move
     
     def get_game_info(self) -> dict:
         """Get detailed information about the current game state."""
