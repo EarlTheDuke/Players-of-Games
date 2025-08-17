@@ -113,13 +113,13 @@ def main():
         if st.button("▶️ Next Move"):
             if 'game' in st.session_state:
                 st.session_state.make_move = True
-                st.session_state.last_button_press = f"Next Move at {datetime.now().strftime('%H:%M:%S')}"
+                st.session_state.last_button_press = "Next Move button clicked"
                 st.rerun()
     
     with col3:
         if st.button("⏩ Auto Play"):
             st.session_state.auto_play = not st.session_state.get('auto_play', False)
-            st.session_state.last_button_press = f"Auto Play {'ON' if st.session_state.auto_play else 'OFF'} at {datetime.now().strftime('%H:%M:%S')}"
+            st.session_state.last_button_press = f"Auto Play {'ON' if st.session_state.auto_play else 'OFF'}"
             st.rerun()
     
     with col4:
@@ -150,8 +150,13 @@ def main():
             st.session_state.make_move = False
             
             # DEBUG: Add to session state immediately to confirm this code path is taken
+            try:
+                timestamp = datetime.now().strftime("%H:%M:%S")
+            except:
+                timestamp = "00:00:00"
+            
             debug_entry = {
-                "timestamp": datetime.now().strftime("%H:%M:%S"),
+                "timestamp": timestamp,
                 "player": game.current_player,
                 "move_count": game.move_count,
                 "success": False,  # Will update this later
@@ -179,8 +184,13 @@ def main():
                     debug_text = debug_output.getvalue()
                     
                     # ALWAYS save debug output to session state - even if empty
+                    try:
+                        timestamp = datetime.now().strftime("%H:%M:%S")
+                    except:
+                        timestamp = "00:00:00"
+                    
                     debug_entry = {
-                        "timestamp": datetime.now().strftime("%H:%M:%S"),
+                        "timestamp": timestamp,
                         "player": game.current_player,
                         "move_count": game.move_count,
                         "success": success,
