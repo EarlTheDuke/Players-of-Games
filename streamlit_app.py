@@ -112,11 +112,13 @@ def main():
         if st.button("▶️ Next Move"):
             if 'game' in st.session_state:
                 st.session_state.make_move = True
+                st.session_state.last_button_press = f"Next Move at {datetime.now().strftime('%H:%M:%S')}"
                 st.rerun()
     
     with col3:
         if st.button("⏩ Auto Play"):
             st.session_state.auto_play = not st.session_state.get('auto_play', False)
+            st.session_state.last_button_press = f"Auto Play {'ON' if st.session_state.auto_play else 'OFF'} at {datetime.now().strftime('%H:%M:%S')}"
             st.rerun()
     
     with col4:
@@ -145,6 +147,17 @@ def main():
         # Make move if requested
         if st.session_state.get('make_move', False):
             st.session_state.make_move = False
+            
+            # DEBUG: Add to session state immediately to confirm this code path is taken
+            debug_entry = {
+                "timestamp": datetime.now().strftime("%H:%M:%S"),
+                "player": game.current_player,
+                "move_count": game.move_count,
+                "success": False,  # Will update this later
+                "debug_output": "MOVE ATTEMPT STARTED - Debug capture initiated"
+            }
+            st.session_state.debug_outputs.append(debug_entry)
+            
             try:
                 log_info("Making AI move", ErrorCategory.GAME_LOGIC, {
                     "current_player": game.current_player,
@@ -451,6 +464,11 @@ def main():
             if 'game' in st.session_state:
                 st.text(f"Game move count: {st.session_state.game.move_count}")
             st.text(f"Make move button pressed: {st.session_state.get('make_move', False)}")
+            st.text(f"Auto play enabled: {st.session_state.get('auto_play', False)}")
+            
+            # Show recent button presses
+            if hasattr(st.session_state, 'last_button_press'):
+                st.text(f"Last button: {st.session_state.last_button_press}")
             
             # Filter for failed moves only
             failed_debug_outputs = [d for d in debug_outputs if not d['success']]
