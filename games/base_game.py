@@ -45,6 +45,13 @@ class BaseGame(ABC):
         # Track failed moves to prevent AI from repeating the same mistakes
         self.failed_moves = {player: set() for player in players.keys()}
         
+        # Add termination flag for clean shutdown
+        self._terminated = False
+        
+        # Add game instance ID for collision detection
+        import uuid
+        self.instance_id = str(uuid.uuid4())[:8]
+        
     @property
     def current_player(self) -> str:
         """Get the current player name."""
@@ -165,6 +172,20 @@ class BaseGame(ABC):
         except Exception as e:
             return None, f"Error calling API: {str(e)}"
     
+    def terminate(self):
+        """Terminate this game instance cleanly."""
+        self._terminated = True
+        try:
+            from debug_console import debug_log, DebugLevel
+            debug_log(f"🛑 GAME TERMINATED: Instance {self.instance_id}", 
+                     DebugLevel.SESSION, "TERMINATION")
+        except:
+            pass
+    
+    def is_terminated(self) -> bool:
+        """Check if this game instance has been terminated."""
+        return self._terminated
+    
     def make_move(self) -> bool:
         """
         Make a move for the current player.
@@ -172,6 +193,16 @@ class BaseGame(ABC):
         Returns:
             True if move was successful, False if game should end
         """
+        # Check for termination before making moves
+        if self._terminated:
+            try:
+                from debug_console import debug_log, DebugLevel
+                debug_log(f"🛑 MOVE BLOCKED: Game {self.instance_id} is terminated", 
+                         DebugLevel.WARNING, "TERMINATION")
+            except:
+                pass
+            return False
+            
         player_name = self.current_player
         max_attempts = 3
         

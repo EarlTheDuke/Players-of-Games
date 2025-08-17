@@ -275,18 +275,31 @@ def run_streamlit_app():
     if 'game_history' not in st.session_state:
         st.session_state.game_history = []
     
-    # Add session isolation key to detect when we need fresh state
+    # NUCLEAR SESSION CLEANUP - Eliminate ghost games completely
     session_key = f"{game_type}_{player1}_{player2}"
+    
+    # Force complete session cleanup on any configuration change
     if 'session_key' not in st.session_state or st.session_state.session_key != session_key:
-        # New game configuration detected - force clean state
-        st.session_state.game = None
-        st.session_state.game_history = []
+        # AGGRESSIVE CLEANUP: Clear ALL possible session state
+        for key in list(st.session_state.keys()):
+            if key.startswith('game') or key in ['game', 'game_history', 'session_key']:
+                del st.session_state[key]
+        
+        # Force garbage collection of any lingering game objects
+        import gc
+        gc.collect()
+        
+        # Set new session key
         st.session_state.session_key = session_key
         
-        # Clear debug console for new session
+        # Clear debug console and add session termination logging
         try:
-            from debug_console import clear
+            from debug_console import clear, debug_log, DebugLevel
             clear()
+            debug_log("🧨 NUCLEAR CLEANUP: All previous sessions terminated", 
+                     DebugLevel.SESSION, "CLEANUP")
+            debug_log(f"New session key: {session_key}", 
+                     DebugLevel.SESSION, "CLEANUP")
         except:
             pass
     
@@ -301,9 +314,29 @@ def run_streamlit_app():
         
         with col1a:
             if st.button("🆕 New Game"):
-                # Force complete state cleanup
-                st.session_state.game = None
-                st.session_state.game_history = []
+                # NUCLEAR OPTION: Terminate ALL existing games and sessions
+                try:
+                    from debug_console import clear, set_session_info, debug_log, DebugLevel
+                    debug_log("🚨 TERMINATING ALL EXISTING GAMES", DebugLevel.SESSION, "TERMINATION")
+                except:
+                    pass
+                
+                # Force complete state cleanup - AGGRESSIVE
+                for key in list(st.session_state.keys()):
+                    if 'game' in key.lower() or key in ['game', 'game_history', 'session_key']:
+                        try:
+                            # Try to properly close/terminate any game objects
+                            if hasattr(st.session_state[key], 'close'):
+                                st.session_state[key].close()
+                            if hasattr(st.session_state[key], 'terminate'):
+                                st.session_state[key].terminate()
+                        except:
+                            pass
+                        del st.session_state[key]
+                
+                # Force garbage collection to clean up any lingering objects
+                import gc
+                gc.collect()
                 
                 # Clear debug console and set new session info
                 try:
@@ -316,6 +349,7 @@ def run_streamlit_app():
                     game_id = f"{game_type}_{player1}v{player2}_{datetime.now().strftime('%H%M%S')}"
                     set_session_info(session_id, game_id)
                     
+                    debug_log("🧨 NUCLEAR CLEANUP COMPLETE", DebugLevel.SESSION, "SETUP")
                     debug_log(f"🆕 NEW GAME SESSION CREATED", DebugLevel.SESSION, "SETUP")
                     debug_log(f"Game ID: {game_id}", DebugLevel.SESSION, "SETUP")
                     debug_log(f"Session ID: {session_id}", DebugLevel.SESSION, "SETUP")
@@ -330,15 +364,28 @@ def run_streamlit_app():
                     log_to_file=False
                 )
                 
-                # Add debug logging for new game creation
+                # Add debug logging for new game creation with validation
                 try:
                     from debug_console import debug_log, DebugLevel
                     debug_log(f"Game Type: {game_type}", DebugLevel.GAME, "SETUP")
                     debug_log(f"Player 1: {player1} (White)", DebugLevel.GAME, "SETUP") 
                     debug_log(f"Player 2: {player2} (Black)", DebugLevel.GAME, "SETUP")
+                    
                     if hasattr(st.session_state.game, 'board'):
-                        debug_log(f"Initial board FEN: {st.session_state.game.board.fen()}", DebugLevel.GAME, "SETUP")
+                        initial_fen = st.session_state.game.board.fen()
+                        expected_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+                        
+                        debug_log(f"Initial board FEN: {initial_fen}", DebugLevel.GAME, "SETUP")
                         debug_log(f"Legal moves: {len(st.session_state.game.get_legal_actions())}", DebugLevel.GAME, "SETUP")
+                        
+                        # VALIDATION: Ensure we have a clean starting position
+                        if initial_fen == expected_fen:
+                            debug_log("✅ VALIDATION: Clean starting position confirmed", DebugLevel.GAME, "VALIDATION")
+                        else:
+                            debug_log(f"❌ VALIDATION: Corrupted starting position! Expected: {expected_fen}", 
+                                     DebugLevel.ERROR, "VALIDATION")
+                            debug_log("🚨 GHOST GAME DETECTED - Position not clean starting state", 
+                                     DebugLevel.ERROR, "GHOST_DETECTION")
                 except:
                     pass
                 
@@ -393,6 +440,23 @@ def run_streamlit_app():
                 
                 st.warning("Game reset to starting position")
                 st.rerun()
+        
+        # COLLISION DETECTION: Check for multiple active games
+        try:
+            from debug_console import debug_log, DebugLevel
+            active_games = 0
+            for key, value in st.session_state.items():
+                if 'game' in key.lower() and value is not None:
+                    active_games += 1
+                    if hasattr(value, 'board') and active_games > 1:
+                        debug_log(f"🚨 COLLISION: Multiple games detected! Key: {key}", 
+                                 DebugLevel.ERROR, "COLLISION")
+            
+            if active_games > 1:
+                debug_log(f"🚨 TOTAL ACTIVE GAMES: {active_games} (Should be 1)", 
+                         DebugLevel.ERROR, "COLLISION")
+        except:
+            pass
         
         # Display game state
         if st.session_state.game:
