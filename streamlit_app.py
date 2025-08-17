@@ -141,16 +141,26 @@ def main():
         
         # Display board
         try:
+            # Create proper player mapping for the renderer (it expects 'white' and 'black' keys)
+            player_names = {
+                'white': 'White (Grok)', 
+                'black': 'Black (Claude)'
+            }
             board_html = chess_board_renderer.render_chess_board_with_info(
                 game.board, 
-                game.current_player, 
-                {'player1': 'White (Grok)', 'player2': 'Black (Claude)'}
+                player_names
             )
             st.components.v1.html(board_html, height=520, width=660)
         except Exception as e:
             st.error(f"❌ Board display error: {e}")
-            # Fallback to text display
-            st.code(str(game.board))
+            # Fallback to simple board renderer
+            try:
+                simple_board_html = chess_board_renderer.render_chess_board(game.board)
+                st.components.v1.html(simple_board_html, height=400, width=400)
+            except Exception as e2:
+                st.error(f"❌ Simple board error: {e2}")
+                # Final fallback to text display
+                st.code(str(game.board))
         
         # Game info
         st.subheader("📊 Game Information")
@@ -174,15 +184,27 @@ def main():
         # Game log
         st.subheader("📝 Game Log")
         try:
-            log_entries = game.logger.get_moves()
-            if log_entries:
-                for entry in log_entries[-5:]:  # Show last 5 moves
-                    status = "✅" if entry.get('is_valid', True) else "❌"
-                    st.text(f"{status} {entry.get('move', 'Unknown')}: {entry.get('reasoning', 'No reasoning')[:100]}...")
+            # Access the game history directly from the logger
+            if hasattr(game.logger, 'game_history'):
+                log_entries = game.logger.game_history
+                if log_entries:
+                    for entry in log_entries[-5:]:  # Show last 5 moves
+                        if isinstance(entry, dict) and 'move' in entry:
+                            status = "✅" if entry.get('is_valid', True) else "❌"
+                            move = entry.get('move', 'Unknown')
+                            reasoning = entry.get('reasoning', 'No reasoning')[:100]
+                            player = entry.get('player', 'Unknown')
+                            move_num = entry.get('move_number', '?')
+                            st.text(f"{status} Move {move_num} - {player.upper()}: {move}")
+                            st.text(f"   Reasoning: {reasoning}...")
+                            st.text("")  # Empty line for spacing
+                else:
+                    st.text("No moves yet - click 'Next Move' to start!")
             else:
-                st.text("No moves yet")
+                st.text("Game log not available - moves will appear here")
         except Exception as e:
-            st.error(f"❌ Log error: {e}")
+            st.text(f"Game log error: {e}")
+            st.text("Moves will appear here when the game starts")
     
     # Debug console
     st.sidebar.subheader("🖥️ Debug Console")
