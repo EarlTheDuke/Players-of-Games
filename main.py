@@ -280,10 +280,20 @@ def run_streamlit_app():
     
     # Force complete session cleanup on any configuration change
     if 'session_key' not in st.session_state or st.session_state.session_key != session_key:
-        # AGGRESSIVE CLEANUP: Clear ALL possible session state
-        for key in list(st.session_state.keys()):
-            if key.startswith('game') or key in ['game', 'game_history', 'session_key']:
-                del st.session_state[key]
+        # SELECTIVE CLEANUP: Only clear game-related objects, not all session state
+        keys_to_delete = []
+        for key in st.session_state.keys():
+            if key.startswith('game') or key in ['game', 'game_history']:
+                keys_to_delete.append(key)
+        
+        # Safely terminate game objects before deletion
+        for key in keys_to_delete:
+            try:
+                if hasattr(st.session_state[key], 'terminate'):
+                    st.session_state[key].terminate()
+            except:
+                pass
+            del st.session_state[key]
         
         # Force garbage collection of any lingering game objects
         import gc
@@ -296,7 +306,7 @@ def run_streamlit_app():
         try:
             from debug_console import clear, debug_log, DebugLevel
             clear()
-            debug_log("🧨 NUCLEAR CLEANUP: All previous sessions terminated", 
+            debug_log("🧨 SELECTIVE CLEANUP: Game objects terminated", 
                      DebugLevel.SESSION, "CLEANUP")
             debug_log(f"New session key: {session_key}", 
                      DebugLevel.SESSION, "CLEANUP")
@@ -321,22 +331,30 @@ def run_streamlit_app():
                 except:
                     pass
                 
-                # Force complete state cleanup - AGGRESSIVE
+                # Force complete state cleanup - SELECTIVE
+                keys_to_delete = []
                 for key in list(st.session_state.keys()):
-                    if 'game' in key.lower() or key in ['game', 'game_history', 'session_key']:
-                        try:
-                            # Try to properly close/terminate any game objects
-                            if hasattr(st.session_state[key], 'close'):
-                                st.session_state[key].close()
-                            if hasattr(st.session_state[key], 'terminate'):
-                                st.session_state[key].terminate()
-                        except:
-                            pass
-                        del st.session_state[key]
+                    if key.startswith('game') or key in ['game', 'game_history']:
+                        keys_to_delete.append(key)
+                
+                for key in keys_to_delete:
+                    try:
+                        # Try to properly close/terminate any game objects
+                        if hasattr(st.session_state[key], 'close'):
+                            st.session_state[key].close()
+                        if hasattr(st.session_state[key], 'terminate'):
+                            st.session_state[key].terminate()
+                    except:
+                        pass
+                    del st.session_state[key]
                 
                 # Force garbage collection to clean up any lingering objects
                 import gc
                 gc.collect()
+                
+                # Reinitialize session state after cleanup
+                st.session_state.game = None
+                st.session_state.game_history = []
                 
                 # Clear debug console and set new session info
                 try:
@@ -349,7 +367,7 @@ def run_streamlit_app():
                     game_id = f"{game_type}_{player1}v{player2}_{datetime.now().strftime('%H%M%S')}"
                     set_session_info(session_id, game_id)
                     
-                    debug_log("🧨 NUCLEAR CLEANUP COMPLETE", DebugLevel.SESSION, "SETUP")
+                    debug_log("🧨 SELECTIVE CLEANUP COMPLETE", DebugLevel.SESSION, "SETUP")
                     debug_log(f"🆕 NEW GAME SESSION CREATED", DebugLevel.SESSION, "SETUP")
                     debug_log(f"Game ID: {game_id}", DebugLevel.SESSION, "SETUP")
                     debug_log(f"Session ID: {session_id}", DebugLevel.SESSION, "SETUP")
@@ -393,7 +411,7 @@ def run_streamlit_app():
                 st.rerun()
         
         with col1b:
-            if st.button("▶️ Next Move") and st.session_state.game:
+            if st.button("▶️ Next Move") and hasattr(st.session_state, 'game') and st.session_state.game:
                 if not st.session_state.game.is_game_over():
                     success = st.session_state.game.make_move()
                     if success:
@@ -402,14 +420,14 @@ def run_streamlit_app():
                         st.error("Move failed - try resetting the game")
         
         with col1c:
-            if st.button("⚡ Auto Play") and st.session_state.game:
+            if st.button("⚡ Auto Play") and hasattr(st.session_state, 'game') and st.session_state.game:
                 with st.spinner("Playing game..."):
                     result = st.session_state.game.play()
                     st.session_state.game_history.append(result)
                     st.rerun()
         
         with col1d:
-            if st.button("🔄 Reset Game") and st.session_state.game:
+            if st.button("🔄 Reset Game") and hasattr(st.session_state, 'game') and st.session_state.game:
                 # Force complete state cleanup
                 st.session_state.game = None
                 st.session_state.game_history = []
@@ -458,8 +476,8 @@ def run_streamlit_app():
         except:
             pass
         
-        # Display game state
-        if st.session_state.game:
+        # Display game state (with safety check)
+        if hasattr(st.session_state, 'game') and st.session_state.game:
             game = st.session_state.game
             
             # Game board
