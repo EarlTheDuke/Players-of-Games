@@ -328,11 +328,37 @@ def run_streamlit_app():
             game = st.session_state.game
             
             # Game board
-            st.subheader("Current Position")
+            st.subheader("🎯 Current Position")
             if game_type.lower() == 'chess':
-                # For chess, show FEN and board
-                st.code(game.get_state_text(), language="text")
-                st.text(game.get_state_display())
+                # Beautiful chess board visualization
+                try:
+                    from chess_board_renderer import render_chess_board_with_moves
+                    
+                    # Get last move for highlighting
+                    last_move = None
+                    if game.board.move_stack:
+                        last_move = game.board.peek()
+                    
+                    # Render beautiful chess board
+                    board_html = render_chess_board_with_moves(
+                        game.board, 
+                        last_move=last_move,
+                        board_size=480
+                    )
+                    st.components.v1.html(board_html, height=520)
+                    
+                    # Position details in expandable section
+                    with st.expander("📋 Position Details (FEN & Text)", expanded=False):
+                        st.text("FEN Position:")
+                        st.code(game.get_state_text(), language="text")
+                        st.text("Text Board:")
+                        st.code(game.get_state_display(), language="text")
+                    
+                except Exception as e:
+                    st.error(f"Error rendering chess board: {e}")
+                    # Fallback to text board
+                    st.code(game.get_state_text(), language="text")
+                    st.text(game.get_state_display())
             else:
                 # For other games, show board display
                 st.text(game.get_state_display())
