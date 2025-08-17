@@ -12,6 +12,7 @@ try:
     from debug_console import debug_log
     import chess_board_renderer
     from error_logger import error_logger, log_error, log_warning, log_info, ErrorCategory, ErrorLevel
+    from datetime import datetime
 except ImportError as e:
     st.error(f"Import error: {e}")
     st.stop()
