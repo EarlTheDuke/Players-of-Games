@@ -8,6 +8,157 @@ PIECE_SYMBOLS = {
     'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'   # Black pieces
 }
 
+def render_chess_board_with_info(board: chess.Board, player_info=None, highlight_squares=None, board_size=400):
+    """
+    Render a beautiful chess board with player info and captured pieces.
+    
+    Args:
+        board: python-chess Board object
+        player_info: Dict with player names and colors {'white': 'Player1', 'black': 'Player2'}
+        highlight_squares: List of squares to highlight (e.g., ['e4', 'e5'])
+        board_size: Size of the board in pixels
+    
+    Returns:
+        HTML string for the chess board with player info
+    """
+    if player_info is None:
+        player_info = {'white': 'White', 'black': 'Black'}
+    
+    # Get captured pieces
+    captured_pieces = get_captured_pieces(board)
+    
+    # Generate the basic board HTML
+    board_html = render_chess_board(board, highlight_squares, board_size)
+    
+    # Add player info and captured pieces panel
+    info_panel_width = 200
+    total_width = board_size + info_panel_width + 20  # 20px for spacing
+    
+    info_panel_html = f"""
+    <div style="display: flex; gap: 20px; align-items: flex-start;">
+        <div style="flex: 0 0 auto;">
+            {board_html}
+        </div>
+        <div style="flex: 0 0 {info_panel_width}px; background: #F0D9B5; border: 2px solid #8B4513; border-radius: 8px; padding: 15px; font-family: Arial, sans-serif;">
+            <!-- Black Player Info (Top) -->
+            <div style="margin-bottom: 20px; text-align: center;">
+                <div style="background: #2C2C2C; color: white; padding: 8px; border-radius: 5px; margin-bottom: 10px;">
+                    <strong>♛ {player_info.get('black', 'Black')}</strong>
+                </div>
+                <div style="background: #E8E8E8; padding: 8px; border-radius: 5px; min-height: 40px;">
+                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Captured:</div>
+                    <div style="font-size: 18px; line-height: 1.2;">
+                        {format_captured_pieces(captured_pieces['white'])}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Game Status -->
+            <div style="text-align: center; margin: 20px 0; padding: 10px; background: #D2B48C; border-radius: 5px;">
+                <div style="font-size: 12px; color: #8B4513;">Turn:</div>
+                <div style="font-weight: bold; color: #8B4513;">
+                    {'White' if board.turn == chess.WHITE else 'Black'}
+                </div>
+                <div style="font-size: 12px; color: #8B4513; margin-top: 5px;">
+                    Move #{board.fullmove_number}
+                </div>
+            </div>
+            
+            <!-- White Player Info (Bottom) -->
+            <div style="text-align: center;">
+                <div style="background: #E8E8E8; padding: 8px; border-radius: 5px; min-height: 40px; margin-bottom: 10px;">
+                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Captured:</div>
+                    <div style="font-size: 18px; line-height: 1.2;">
+                        {format_captured_pieces(captured_pieces['black'])}
+                    </div>
+                </div>
+                <div style="background: #FFFFFF; color: #2C2C2C; padding: 8px; border-radius: 5px; border: 1px solid #CCC;">
+                    <strong>♔ {player_info.get('white', 'White')}</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+    """
+    
+    return info_panel_html
+
+def get_captured_pieces(board: chess.Board):
+    """
+    Calculate which pieces have been captured by analyzing the board.
+    
+    Args:
+        board: python-chess Board object
+    
+    Returns:
+        Dict with 'white' and 'black' keys containing lists of captured pieces
+    """
+    # Starting pieces count
+    starting_pieces = {
+        'white': {'P': 8, 'R': 2, 'N': 2, 'B': 2, 'Q': 1, 'K': 1},
+        'black': {'p': 8, 'r': 2, 'n': 2, 'b': 2, 'q': 1, 'k': 1}
+    }
+    
+    # Count current pieces on board
+    current_pieces = {
+        'white': {'P': 0, 'R': 0, 'N': 0, 'B': 0, 'Q': 0, 'K': 0},
+        'black': {'p': 0, 'r': 0, 'n': 0, 'b': 0, 'q': 0, 'k': 0}
+    }
+    
+    # Count pieces currently on the board
+    for square in chess.SQUARES:
+        piece = board.piece_at(square)
+        if piece:
+            if piece.color == chess.WHITE:
+                current_pieces['white'][piece.symbol().upper()] += 1
+            else:
+                current_pieces['black'][piece.symbol().lower()] += 1
+    
+    # Calculate captured pieces
+    captured = {'white': [], 'black': []}
+    
+    # White pieces captured by Black
+    for piece_type, starting_count in starting_pieces['white'].items():
+        current_count = current_pieces['white'][piece_type]
+        captured_count = starting_count - current_count
+        for _ in range(captured_count):
+            captured['white'].append(piece_type)
+    
+    # Black pieces captured by White  
+    for piece_type, starting_count in starting_pieces['black'].items():
+        current_count = current_pieces['black'][piece_type]
+        captured_count = starting_count - current_count
+        for _ in range(captured_count):
+            captured['black'].append(piece_type)
+    
+    return captured
+
+def format_captured_pieces(pieces_list):
+    """
+    Format a list of captured pieces as Unicode symbols.
+    
+    Args:
+        pieces_list: List of piece symbols (e.g., ['P', 'N', 'q'])
+    
+    Returns:
+        String of Unicode piece symbols
+    """
+    if not pieces_list:
+        return "—"
+    
+    # Sort pieces by value (most valuable first)
+    piece_order = {'Q': 0, 'q': 0, 'R': 1, 'r': 1, 'B': 2, 'b': 2, 'N': 3, 'n': 3, 'P': 4, 'p': 4}
+    sorted_pieces = sorted(pieces_list, key=lambda x: piece_order.get(x, 5))
+    
+    # Convert to Unicode symbols
+    symbols = []
+    for piece in sorted_pieces:
+        if piece.isupper():
+            symbols.append(PIECE_SYMBOLS[piece])
+        else:
+            symbols.append(PIECE_SYMBOLS[piece])
+    
+    return ''.join(symbols)
+
 def render_chess_board(board: chess.Board, highlight_squares=None, board_size=400):
     """
     Render a beautiful chess board using HTML/CSS.

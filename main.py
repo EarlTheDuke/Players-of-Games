@@ -331,22 +331,32 @@ def run_streamlit_app():
             # Game board
             st.subheader("🎯 Current Position")
             if game_type.lower() == 'chess':
-                # Beautiful chess board visualization
+                # Beautiful chess board visualization with player info
                 try:
-                    from chess_board_renderer import render_chess_board_with_moves
+                    from chess_board_renderer import render_chess_board_with_info
                     
                     # Get last move for highlighting
                     last_move = None
+                    highlight_squares = []
                     if game.board.move_stack:
                         last_move = game.board.peek()
+                        highlight_squares = [last_move.from_square, last_move.to_square]
                     
-                    # Render beautiful chess board
-                    board_html = render_chess_board_with_moves(
-                        game.board, 
-                        last_move=last_move,
+                    # Get player information
+                    player_names = list(game.players.keys())
+                    player_info = {
+                        'white': f"{player_names[0]} ({game.players[player_names[0]].upper()})" if len(player_names) > 0 else "White",
+                        'black': f"{player_names[1]} ({game.players[player_names[1]].upper()})" if len(player_names) > 1 else "Black"
+                    }
+                    
+                    # Render beautiful chess board with player info
+                    board_html = render_chess_board_with_info(
+                        game.board,
+                        player_info=player_info,
+                        highlight_squares=highlight_squares,
                         board_size=480
                     )
-                    st.components.v1.html(board_html, height=520)
+                    st.components.v1.html(board_html, height=520, width=720)  # Increased width for info panel
                     
                     # Position details in expandable section
                     with st.expander("📋 Position Details (FEN & Text)", expanded=False):
