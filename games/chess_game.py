@@ -101,57 +101,126 @@ class ChessGame(BaseGame):
             True if move was valid and applied
         """
         try:
-            # Clean the action string
-            action = action.strip().lower()
+            from debug_console import debug_log, DebugLevel
             
-            # Try to parse as UCI move first
+            # 🔍 STEP 1: Input Analysis
+            original_action = action
+            action_cleaned = action.strip()
+            
+            debug_log(f"🔍 VALIDATION START: Original='{original_action}', Cleaned='{action_cleaned}'", 
+                     DebugLevel.VALIDATION, "VALIDATION_START", self.current_player, self.board.fullmove_number)
+            debug_log(f"🔍 Board State: FEN={self.board.fen()}", 
+                     DebugLevel.VALIDATION, "VALIDATION_START", self.current_player, self.board.fullmove_number)
+            debug_log(f"🔍 Expected Turn: {'White' if self.board.turn == chess.WHITE else 'Black'}", 
+                     DebugLevel.VALIDATION, "VALIDATION_START", self.current_player, self.board.fullmove_number)
+            debug_log(f"🔍 Current Player: {self.current_player}", 
+                     DebugLevel.VALIDATION, "VALIDATION_START", self.current_player, self.board.fullmove_number)
+            
+            # 🔍 STEP 2: Parse Move - Try Multiple Formats
             move = None
-            try:
-                move = chess.Move.from_uci(action)
-            except (ValueError, chess.InvalidMoveError):
-                # If UCI parsing fails, try algebraic notation
-                try:
-                    print(f"DEBUG: Trying to parse algebraic notation: {action}")
-                    # Convert algebraic to move object
-                    move = self.board.parse_san(action)
-                    print(f"DEBUG: Successfully parsed algebraic move: {action} -> {move}")
-                except (ValueError, chess.InvalidMoveError, chess.IllegalMoveError) as e:
-                    print(f"DEBUG: Failed to parse algebraic notation {action}: {e}")
-                    return False
+            parse_method = None
             
+            # Try UCI format first (e.g., e2e4)
+            try:
+                move = chess.Move.from_uci(action_cleaned)
+                parse_method = "UCI"
+                debug_log(f"✅ UCI PARSE SUCCESS: '{action_cleaned}' -> {move}", 
+                         DebugLevel.VALIDATION, "PARSE_SUCCESS", self.current_player, self.board.fullmove_number)
+            except (ValueError, chess.InvalidMoveError) as e:
+                debug_log(f"❌ UCI PARSE FAILED: '{action_cleaned}' -> {e}", 
+                         DebugLevel.VALIDATION, "PARSE_FAIL", self.current_player, self.board.fullmove_number)
+                
+                # Try algebraic notation variations
+                algebraic_variations = [
+                    action_cleaned,  # Original case
+                    action_cleaned.capitalize(),  # First letter capital: nf6 -> Nf6  
+                    action_cleaned.upper(),  # All caps: nf6 -> NF6
+                ]
+                
+                for i, variation in enumerate(algebraic_variations):
+                    try:
+                        move = self.board.parse_san(variation)
+                        parse_method = f"SAN_VAR_{i}({variation})"
+                        debug_log(f"✅ SAN PARSE SUCCESS: '{action_cleaned}' -> '{variation}' -> {move}", 
+                                 DebugLevel.VALIDATION, "PARSE_SUCCESS", self.current_player, self.board.fullmove_number)
+                        break
+                    except (ValueError, chess.InvalidMoveError, chess.IllegalMoveError) as san_e:
+                        debug_log(f"❌ SAN PARSE FAILED: '{variation}' -> {san_e}", 
+                                 DebugLevel.VALIDATION, "PARSE_FAIL", self.current_player, self.board.fullmove_number)
+                        continue
+            
+            # 🔍 STEP 3: Move Object Validation
             if move is None:
-                print(f"DEBUG: Could not parse move: {action}")
+                debug_log(f"❌ TOTAL PARSE FAILURE: Could not parse '{original_action}' in any format", 
+                         DebugLevel.ERROR, "PARSE_ERROR", self.current_player, self.board.fullmove_number)
                 return False
             
-            # Debug logging
-            print(f"DEBUG: Attempting move {action} for {self.current_player}")
-            print(f"DEBUG: Current turn: {'White' if self.board.turn == chess.WHITE else 'Black'}")
-            print(f"DEBUG: Move legal: {move in self.board.legal_moves}")
-            print(f"DEBUG: Legal moves: {[str(m) for m in list(self.board.legal_moves)[:10]]}...")
+            debug_log(f"✅ MOVE PARSED: Method={parse_method}, Move={move}", 
+                     DebugLevel.VALIDATION, "PARSE_COMPLETE", self.current_player, self.board.fullmove_number)
             
-            try:
-                from debug_console import debug_log
-                debug_log(f"Chess: Attempting {action} for {self.current_player}")
-                debug_log(f"Chess: Turn={'White' if self.board.turn == chess.WHITE else 'Black'}, Legal={move in self.board.legal_moves}")
-            except:
-                pass
+            # 🔍 STEP 4: Legal Move Check
+            legal_moves_list = list(self.board.legal_moves)
+            is_legal = move in legal_moves_list
             
-            # Check if move is legal
-            if move in self.board.legal_moves:
+            debug_log(f"🔍 LEGAL CHECK: Move={move}, IsLegal={is_legal}", 
+                     DebugLevel.VALIDATION, "LEGAL_CHECK", self.current_player, self.board.fullmove_number)
+            debug_log(f"🔍 Total Legal Moves: {len(legal_moves_list)}", 
+                     DebugLevel.VALIDATION, "LEGAL_CHECK", self.current_player, self.board.fullmove_number)
+            
+            # Show first 10 legal moves for comparison
+            legal_moves_sample = [str(m) for m in legal_moves_list[:10]]
+            debug_log(f"🔍 Legal Moves Sample: {legal_moves_sample}", 
+                     DebugLevel.VALIDATION, "LEGAL_CHECK", self.current_player, self.board.fullmove_number)
+            
+            # 🔍 STEP 5: Apply Move or Reject
+            if is_legal:
                 # Store move in SAN notation for PGN
                 san_move = self.board.san(move)
                 self.moves_san.append(san_move)
                 
-                # Apply the move
+                debug_log(f"✅ MOVE APPLYING: {move} (SAN: {san_move})", 
+                         DebugLevel.VALIDATION, "MOVE_APPLY", self.current_player, self.board.fullmove_number)
+                
+                # Apply the move to the board
                 self.board.push(move)
-                print(f"DEBUG: Move {action} applied successfully")
+                
+                debug_log(f"✅ VALIDATION SUCCESS: Move applied successfully", 
+                         DebugLevel.VALIDATION, "VALIDATION_SUCCESS", self.current_player, self.board.fullmove_number)
+                debug_log(f"✅ New Board State: {self.board.fen()}", 
+                         DebugLevel.VALIDATION, "VALIDATION_SUCCESS", self.current_player, self.board.fullmove_number)
+                
                 return True
             else:
-                print(f"DEBUG: Move {action} is not legal in current position")
+                # 🔍 STEP 6: Detailed Rejection Analysis
+                debug_log(f"❌ MOVE REJECTED: {move} is not in legal moves", 
+                         DebugLevel.ERROR, "VALIDATION_ERROR", self.current_player, self.board.fullmove_number)
+                
+                # Check if it's close to any legal move
+                move_str = str(move)
+                similar_moves = [str(m) for m in legal_moves_list if move_str[:2] == str(m)[:2]]  # Same starting square
+                if similar_moves:
+                    debug_log(f"🔍 SIMILAR MOVES: From same square {move_str[:2]}: {similar_moves}", 
+                             DebugLevel.WARNING, "SIMILAR_MOVES", self.current_player, self.board.fullmove_number)
+                
+                # Check if piece exists on starting square
+                if len(move_str) >= 4:
+                    from_square = chess.parse_square(move_str[:2])
+                    piece_on_square = self.board.piece_at(from_square)
+                    debug_log(f"🔍 PIECE CHECK: Square {move_str[:2]} has piece: {piece_on_square}", 
+                             DebugLevel.WARNING, "PIECE_CHECK", self.current_player, self.board.fullmove_number)
+                
                 return False
                 
-        except (ValueError, chess.InvalidMoveError) as e:
-            print(f"DEBUG: Invalid move format {action}: {e}")
+        except Exception as e:
+            try:
+                from debug_console import debug_log, DebugLevel
+                debug_log(f"❌ VALIDATION EXCEPTION: {str(e)}", 
+                         DebugLevel.ERROR, "VALIDATION_EXCEPTION", self.current_player, self.board.fullmove_number)
+                debug_log(f"❌ Exception Type: {type(e).__name__}", 
+                         DebugLevel.ERROR, "VALIDATION_EXCEPTION", self.current_player, self.board.fullmove_number)
+            except:
+                pass
+            print(f"DEBUG: Exception in validate_and_apply_action: {e}")
             return False
     
     def get_prompt(self) -> str:

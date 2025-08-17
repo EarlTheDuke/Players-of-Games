@@ -731,7 +731,7 @@ def run_streamlit_app():
         with col_debug2:
             debug_category_filter = st.selectbox(
                 "Filter Category:",
-                ["All", "SETUP", "MOVE", "VALIDATION", "PARSING", "API", "GENERAL"],
+                ["All", "SETUP", "MOVE", "VALIDATION", "PARSING", "API", "GENERAL", "CLEANUP", "TERMINATION", "GHOST_DETECTION", "COLLISION", "UCI_TEST", "SAN_TEST", "UCI_SUCCESS", "SAN_SUCCESS", "VALIDATION_ERROR", "CASE_WARNING", "ATTEMPT", "SUCCESS", "REASONING", "TURN_SWITCH", "MOVE_ERROR", "FAILED_HISTORY", "FALLBACK", "VALIDATION_START", "PARSE_SUCCESS", "PARSE_FAIL", "PARSE_ERROR", "PARSE_COMPLETE", "LEGAL_CHECK", "MOVE_APPLY", "VALIDATION_SUCCESS", "SIMILAR_MOVES", "PIECE_CHECK", "VALIDATION_EXCEPTION", "SESSION_DEBUG"],
                 key="debug_category_filter"
             )
         
