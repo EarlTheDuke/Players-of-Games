@@ -74,7 +74,20 @@ def call_grok(prompt: str, api_key: str, model: str = "grok-beta") -> Optional[s
             print(error_msg)
             if hasattr(e, 'response') and e.response is not None:
                 print(f"Response status: {e.response.status_code}")
-                print(f"Response content: {e.response.text[:200]}...")
+                print(f"Response content: {e.response.text[:500]}...")  # Show more content
+                
+                # Check for specific error types
+                if e.response.status_code == 400:
+                    print("ERROR: Bad Request - possibly invalid model name or request format")
+                elif e.response.status_code == 401:
+                    print("ERROR: Unauthorized - check API key")
+                elif e.response.status_code == 403:
+                    print("ERROR: Forbidden - API key may not have permission")
+                elif e.response.status_code == 404:
+                    print("ERROR: Not Found - check endpoint URL")
+                elif e.response.status_code == 429:
+                    print("ERROR: Rate Limited - too many requests")
+                    
             if attempt < MAX_RETRIES - 1:
                 exponential_backoff(attempt)
             else:

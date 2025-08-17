@@ -441,11 +441,21 @@ def run_streamlit_app():
                     from api_utils import call_grok
                     
                     if config.GROK_API_KEY:
-                        result = call_grok(f"Confirm you are {config.GROK_MODEL}. Respond with just your model name and version.", config.GROK_API_KEY, config.GROK_MODEL)
+                        # Test with a simple prompt first
+                        result = call_grok("Say 'test' in one word.", config.GROK_API_KEY, config.GROK_MODEL)
                         if result:
                             st.success(f"✅ Grok API working ({config.GROK_MODEL}): {result}")
                         else:
-                            st.error("❌ Grok API failed - check server logs")
+                            st.error(f"❌ Grok API failed with model {config.GROK_MODEL} - check debug console for details")
+                            
+                            # Try with the original model name as fallback
+                            st.write("Trying fallback model...")
+                            fallback_result = call_grok("Say 'test' in one word.", config.GROK_API_KEY, "grok-beta")
+                            if fallback_result:
+                                st.warning(f"⚠️ Fallback model 'grok-beta' works: {fallback_result}")
+                                st.info("Consider updating GROK_MODEL in config.py to 'grok-beta'")
+                            else:
+                                st.error("❌ Both grok-2-1212 and grok-beta failed - check API key and server logs")
                     else:
                         st.error("❌ Grok API key missing")
                 except Exception as e:
