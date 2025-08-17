@@ -446,16 +446,39 @@ def run_streamlit_app():
                         if result:
                             st.success(f"✅ Grok API working ({config.GROK_MODEL}): {result}")
                         else:
-                            st.error(f"❌ Grok API failed with model {config.GROK_MODEL} - check debug console for details")
+                            st.error(f"❌ Grok API failed with model {config.GROK_MODEL} - testing alternatives...")
                             
-                            # Try with the original model name as fallback
-                            st.write("Trying fallback model...")
-                            fallback_result = call_grok("Say 'test' in one word.", config.GROK_API_KEY, "grok-beta")
-                            if fallback_result:
-                                st.warning(f"⚠️ Fallback model 'grok-beta' works: {fallback_result}")
-                                st.info("Consider updating GROK_MODEL in config.py to 'grok-beta'")
+                            # Try different Grok 4 variants (based on xAI API docs)
+                            grok4_variants = [
+                                "grok-4-0709",  # Official Grok 4 model name
+                                "grok-4",
+                                "grok-4-turbo", 
+                                "grok-4-1212",
+                                "grok-vision-beta",
+                                "grok-beta"
+                            ]
+                            
+                            working_model = None
+                            for i, model_name in enumerate(grok4_variants):
+                                st.write(f"Trying {model_name}...")
+                                
+                                # Add a small delay to avoid rate limiting
+                                if i > 0:
+                                    import time
+                                    time.sleep(1)
+                                
+                                test_result = call_grok("Say 'test' in one word.", config.GROK_API_KEY, model_name)
+                                if test_result:
+                                    st.success(f"✅ {model_name} works: {test_result}")
+                                    working_model = model_name
+                                    break
+                                else:
+                                    st.write(f"❌ {model_name} failed")
+                            
+                            if working_model:
+                                st.info(f"💡 Update GROK_MODEL in config.py to: '{working_model}'")
                             else:
-                                st.error("❌ Both grok-2-1212 and grok-beta failed - check API key and server logs")
+                                st.error("❌ All Grok model variants failed - check API key and server logs")
                     else:
                         st.error("❌ Grok API key missing")
                 except Exception as e:
