@@ -269,11 +269,26 @@ def run_streamlit_app():
         st.markdown("**🔑 Get API keys to play real games with AI models!**")
         return
     
-    # Initialize session state
+    # Initialize session state with proper cleanup
     if 'game' not in st.session_state:
         st.session_state.game = None
     if 'game_history' not in st.session_state:
         st.session_state.game_history = []
+    
+    # Add session isolation key to detect when we need fresh state
+    session_key = f"{game_type}_{player1}_{player2}"
+    if 'session_key' not in st.session_state or st.session_state.session_key != session_key:
+        # New game configuration detected - force clean state
+        st.session_state.game = None
+        st.session_state.game_history = []
+        st.session_state.session_key = session_key
+        
+        # Clear debug console for new session
+        try:
+            from debug_console import clear
+            clear()
+        except:
+            pass
     
     # Main content area
     col1, col2 = st.columns([2, 1])
@@ -286,13 +301,34 @@ def run_streamlit_app():
         
         with col1a:
             if st.button("🆕 New Game"):
+                # Force complete state cleanup
+                st.session_state.game = None
+                st.session_state.game_history = []
+                
+                # Clear debug console
+                try:
+                    from debug_console import clear
+                    clear()
+                except:
+                    pass
+                
+                # Create fresh game instance
                 st.session_state.game = create_game(
                     game_type.lower(), 
                     player1.lower(), 
                     player2.lower(), 
                     log_to_file=False
                 )
-                st.session_state.game_history = []
+                
+                # Add debug logging for new game creation
+                try:
+                    from debug_console import debug_log
+                    debug_log(f"🆕 NEW GAME CREATED: {game_type} - {player1} vs {player2}")
+                    if hasattr(st.session_state.game, 'board'):
+                        debug_log(f"Initial board FEN: {st.session_state.game.board.fen()}")
+                except:
+                    pass
+                
                 st.success("New game started!")
                 st.rerun()
         
@@ -314,13 +350,34 @@ def run_streamlit_app():
         
         with col1d:
             if st.button("🔄 Reset Game") and st.session_state.game:
-                # Reset to a fresh game of the same type
+                # Force complete state cleanup
+                st.session_state.game = None
+                st.session_state.game_history = []
+                
+                # Clear debug console
+                try:
+                    from debug_console import clear
+                    clear()
+                except:
+                    pass
+                
+                # Create fresh game instance
                 st.session_state.game = create_game(
                     game_type.lower(), 
                     player1.lower(), 
                     player2.lower(), 
                     log_to_file=False
                 )
+                
+                # Add debug logging for reset
+                try:
+                    from debug_console import debug_log
+                    debug_log(f"🔄 GAME RESET: {game_type} - {player1} vs {player2}")
+                    if hasattr(st.session_state.game, 'board'):
+                        debug_log(f"Reset board FEN: {st.session_state.game.board.fen()}")
+                except:
+                    pass
+                
                 st.warning("Game reset to starting position")
                 st.rerun()
         

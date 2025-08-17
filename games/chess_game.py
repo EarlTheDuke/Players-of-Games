@@ -303,6 +303,14 @@ Your move:"""
         
         # Critical validation: Check if parsed move is legal and can be parsed correctly
         if parsed_move:
+            # Add board state debugging to catch desync issues
+            try:
+                from debug_console import debug_log
+                debug_log(f"🔍 VALIDATION: Testing move '{parsed_move}' on board FEN: {self.board.fen()}")
+                debug_log(f"🔍 VALIDATION: Current player: {self.current_player}, Board turn: {'White' if self.board.turn == chess.WHITE else 'Black'}")
+            except:
+                pass
+            
             # Get legal moves in UCI format
             legal_moves_uci = [str(move) for move in self.board.legal_moves]
             
