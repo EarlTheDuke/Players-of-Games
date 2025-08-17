@@ -172,6 +172,14 @@ class BaseGame(ABC):
         player_name = self.current_player
         max_attempts = 3
         
+        # Check if we have legal moves before starting
+        legal_actions = self.get_legal_actions()
+        if not legal_actions:
+            self.logger.log_error("no_legal_moves", "No legal moves available - game should end")
+            return False
+        
+        print(f"DEBUG: Making move for {player_name}, {len(legal_actions)} legal moves available")
+        
         for attempt in range(max_attempts):
             # Get move from AI
             action, reasoning = self.prompt_player()
@@ -217,16 +225,32 @@ class BaseGame(ABC):
             if is_valid:
                 # Move was successful
                 self.next_player()
+                print(f"DEBUG: Move {action} successful, switched to {self.current_player}")
                 return True
             else:
                 # Invalid move, try again
+                print(f"DEBUG: Move {action} invalid, attempt {attempt + 1}/{max_attempts}")
                 if attempt == max_attempts - 1:
-                    # All attempts failed
+                    # All attempts failed - this shouldn't happen with our fixes
                     self.logger.log_error(
                         "invalid_moves",
                         f"Player {player_name} made {max_attempts} invalid moves",
-                        {"last_move": action}
+                        {"last_move": action, "legal_moves": legal_actions[:5]}
                     )
+                    # Try one random move as absolute fallback
+                    random_move = random.choice(legal_actions)
+                    print(f"DEBUG: Forcing random legal move: {random_move}")
+                    if self.validate_and_apply_action(random_move):
+                        self.logger.log_move(
+                            player=player_name,
+                            move=random_move,
+                            reasoning="Emergency fallback: random legal move",
+                            game_state=self.get_state_text(),
+                            move_number=self.move_count,
+                            is_valid=True
+                        )
+                        self.next_player()
+                        return True
                     return False
         
         return False

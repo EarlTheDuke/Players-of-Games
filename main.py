@@ -281,7 +281,7 @@ def run_streamlit_app():
         st.header(f"🎯 {game_type} Game")
         
         # Game controls
-        col1a, col1b, col1c = st.columns(3)
+        col1a, col1b, col1c, col1d = st.columns(4)
         
         with col1a:
             if st.button("🆕 New Game"):
@@ -292,6 +292,7 @@ def run_streamlit_app():
                     log_to_file=False
                 )
                 st.session_state.game_history = []
+                st.success("New game started!")
                 st.rerun()
         
         with col1b:
@@ -300,6 +301,8 @@ def run_streamlit_app():
                     success = st.session_state.game.make_move()
                     if success:
                         st.rerun()
+                    else:
+                        st.error("Move failed - try resetting the game")
         
         with col1c:
             if st.button("⚡ Auto Play") and st.session_state.game:
@@ -307,6 +310,18 @@ def run_streamlit_app():
                     result = st.session_state.game.play()
                     st.session_state.game_history.append(result)
                     st.rerun()
+        
+        with col1d:
+            if st.button("🔄 Reset Game") and st.session_state.game:
+                # Reset to a fresh game of the same type
+                st.session_state.game = create_game(
+                    game_type.lower(), 
+                    player1.lower(), 
+                    player2.lower(), 
+                    log_to_file=False
+                )
+                st.warning("Game reset to starting position")
+                st.rerun()
         
         # Display game state
         if st.session_state.game:
