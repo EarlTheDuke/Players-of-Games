@@ -45,13 +45,6 @@ class BaseGame(ABC):
         # Track failed moves to prevent AI from repeating the same mistakes
         self.failed_moves = {player: set() for player in players.keys()}
         
-        # Add termination flag for clean shutdown
-        self._terminated = False
-        
-        # Add game instance ID for collision detection
-        import uuid
-        self.instance_id = str(uuid.uuid4())[:8]
-        
     @property
     def current_player(self) -> str:
         """Get the current player name."""
@@ -140,19 +133,10 @@ class BaseGame(ABC):
         prompt = self.get_prompt()
         
         try:
-            from debug_console import debug_log, DebugLevel
-            
-            # 🔍 STEP 1: API Call Setup
-            debug_log(f"🌐 API CALL START: {player_name} using {config['model']}", 
-                     DebugLevel.API, "API_START", player_name, self.move_count + 1)
-            debug_log(f"🌐 Prompt length: {len(prompt)} chars", 
-                     DebugLevel.API, "API_START", player_name, self.move_count + 1)
-            debug_log(f"🌐 Prompt preview: {prompt[:150]}...", 
-                     DebugLevel.API, "API_START", player_name, self.move_count + 1)
-            
-            # 🔍 STEP 2: Make API Call
-            import time
-            start_time = time.time()
+            # Call the appropriate API
+            print(f"DEBUG: Game calling API for {player_name} with model {config['model']}")
+            print(f"DEBUG: Prompt length: {len(prompt)} characters")
+            print(f"DEBUG: First 100 chars of prompt: {prompt[:100]}...")
             
             response = config['api_function'](
                 prompt, 
@@ -160,100 +144,26 @@ class BaseGame(ABC):
                 config['model']
             )
             
-            call_duration = time.time() - start_time
-            
-            # 🔍 STEP 3: API Response Analysis
+            print(f"DEBUG: API response length: {len(response) if response else 0}")
             if response:
-                debug_log(f"✅ API SUCCESS: Response received in {call_duration:.2f}s", 
-                         DebugLevel.API, "API_SUCCESS", player_name, self.move_count + 1)
-                debug_log(f"✅ Response length: {len(response)} chars", 
-                         DebugLevel.API, "API_SUCCESS", player_name, self.move_count + 1)
-                debug_log(f"✅ Response preview: {response[:200]}...", 
-                         DebugLevel.API, "API_SUCCESS", player_name, self.move_count + 1)
-                
-                # Check if response contains expected patterns
-                has_move_prefix = "MOVE:" in response.upper()
-                has_reasoning_prefix = "REASONING:" in response.upper()
-                debug_log(f"✅ Response patterns: MOVE={has_move_prefix}, REASONING={has_reasoning_prefix}", 
-                         DebugLevel.API, "API_SUCCESS", player_name, self.move_count + 1)
-                
+                print(f"DEBUG: First 100 chars of response: {response[:100]}...")
             else:
-                debug_log(f"❌ API FAILURE: No response after {call_duration:.2f}s", 
-                         DebugLevel.ERROR, "API_FAILURE", player_name, self.move_count + 1)
-                return None, f"No response received from {config['model']} API after {call_duration:.2f}s"
+                print("DEBUG: No response received from API")
             
-            # 🔍 STEP 4: Parse Action from Response
-            debug_log(f"🔍 PARSING START: Extracting move from response", 
-                     DebugLevel.API, "PARSE_START", player_name, self.move_count + 1)
+            if not response:
+                return None, "No response received from API"
             
+            # Parse the action from response
             action = self.parse_action_from_response(response)
-            
-            # Import extract_reasoning function
-            from api_utils import extract_reasoning
             reasoning = extract_reasoning(response)
             
-            # 🔍 STEP 5: Parsing Results Analysis
-            if action:
-                debug_log(f"✅ PARSING SUCCESS: Extracted move '{action}'", 
-                         DebugLevel.API, "PARSE_SUCCESS", player_name, self.move_count + 1)
-                debug_log(f"✅ Reasoning extracted: {len(reasoning)} chars", 
-                         DebugLevel.API, "PARSE_SUCCESS", player_name, self.move_count + 1)
-                return action, reasoning
-            else:
-                # 🔍 DETAILED PARSING FAILURE ANALYSIS
-                debug_log(f"❌ PARSING FAILURE: Could not extract move", 
-                         DebugLevel.ERROR, "PARSE_FAILURE", player_name, self.move_count + 1)
-                debug_log(f"❌ FULL RESPONSE FOR ANALYSIS: {response}", 
-                         DebugLevel.ERROR, "PARSE_FAILURE", player_name, self.move_count + 1)
-                
-                # Check for common parsing issues
-                response_upper = response.upper()
-                if "MOVE:" not in response_upper:
-                    debug_log(f"❌ MISSING MOVE PREFIX: Response lacks 'MOVE:' prefix", 
-                             DebugLevel.ERROR, "PARSE_FAILURE", player_name, self.move_count + 1)
-                
-                if len(response.strip()) < 10:
-                    debug_log(f"❌ RESPONSE TOO SHORT: Only {len(response.strip())} chars", 
-                             DebugLevel.ERROR, "PARSE_FAILURE", player_name, self.move_count + 1)
-                
-                # Look for potential moves in the response
-                import re
-                potential_moves = re.findall(r'\b[a-h][1-8][a-h][1-8]\b', response.lower())
-                if potential_moves:
-                    debug_log(f"❌ FOUND POTENTIAL UCI MOVES: {potential_moves} but parser missed them", 
-                             DebugLevel.WARNING, "PARSE_FAILURE", player_name, self.move_count + 1)
-                
-                potential_san = re.findall(r'\b[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8][=QRBN]?[+#]?\b', response)
-                if potential_san:
-                    debug_log(f"❌ FOUND POTENTIAL SAN MOVES: {potential_san} but parser missed them", 
-                             DebugLevel.WARNING, "PARSE_FAILURE", player_name, self.move_count + 1)
-                
-                return None, f"Could not parse action from {config['model']} response (see debug log for full response)"
+            if not action:
+                return None, f"Could not parse action from response: {response[:100]}..."
+            
+            return action, reasoning
             
         except Exception as e:
-            try:
-                from debug_console import debug_log, DebugLevel
-                debug_log(f"❌ API EXCEPTION: {str(e)}", 
-                         DebugLevel.ERROR, "API_EXCEPTION", player_name, self.move_count + 1)
-                debug_log(f"❌ Exception type: {type(e).__name__}", 
-                         DebugLevel.ERROR, "API_EXCEPTION", player_name, self.move_count + 1)
-            except:
-                pass
-            return None, f"Error calling {config['model']} API: {str(e)}"
-    
-    def terminate(self):
-        """Terminate this game instance cleanly."""
-        self._terminated = True
-        try:
-            from debug_console import debug_log, DebugLevel
-            debug_log(f"🛑 GAME TERMINATED: Instance {self.instance_id}", 
-                     DebugLevel.SESSION, "TERMINATION")
-        except:
-            pass
-    
-    def is_terminated(self) -> bool:
-        """Check if this game instance has been terminated."""
-        return self._terminated
+            return None, f"Error calling API: {str(e)}"
     
     def make_move(self) -> bool:
         """
@@ -262,16 +172,6 @@ class BaseGame(ABC):
         Returns:
             True if move was successful, False if game should end
         """
-        # Check for termination before making moves
-        if self._terminated:
-            try:
-                from debug_console import debug_log, DebugLevel
-                debug_log(f"🛑 MOVE BLOCKED: Game {self.instance_id} is terminated", 
-                         DebugLevel.WARNING, "TERMINATION")
-            except:
-                pass
-            return False
-            
         player_name = self.current_player
         max_attempts = 3
         
@@ -289,14 +189,6 @@ class BaseGame(ABC):
             pass
         
         for attempt in range(max_attempts):
-            # Log move attempt
-            try:
-                from debug_console import debug_log, DebugLevel
-                debug_log(f"Move attempt {attempt + 1}/{max_attempts} for {player_name}", 
-                         DebugLevel.MOVE, "ATTEMPT", player_name, self.move_count + 1)
-            except:
-                pass
-                
             # Get move from AI
             action, reasoning = self.prompt_player()
             
@@ -343,15 +235,9 @@ class BaseGame(ABC):
                 self.failed_moves[player_name].clear()
                 self.next_player()
                 print(f"DEBUG: Move {action} successful, switched to {self.current_player}")
-                
                 try:
-                    from debug_console import debug_log, DebugLevel
-                    debug_log(f"✅ MOVE SUCCESS: {action} by {player_name}", 
-                             DebugLevel.MOVE, "SUCCESS", player_name, self.move_count)
-                    debug_log(f"Reasoning: {reasoning[:100]}...", 
-                             DebugLevel.MOVE, "REASONING", player_name, self.move_count)
-                    debug_log(f"Next player: {self.current_player}", 
-                             DebugLevel.MOVE, "TURN_SWITCH", player_name, self.move_count)
+                    from debug_console import debug_log
+                    debug_log(f"SUCCESS: Move {action} applied, switched to {self.current_player}")
                 except:
                     pass
                 return True
@@ -360,13 +246,10 @@ class BaseGame(ABC):
                 self.failed_moves[player_name].add(action)
                 print(f"DEBUG: Move {action} invalid, attempt {attempt + 1}/{max_attempts}")
                 print(f"DEBUG: Failed moves for {player_name}: {list(self.failed_moves[player_name])}")
-                
                 try:
-                    from debug_console import debug_log, DebugLevel
-                    debug_log(f"❌ MOVE FAILED: {action} by {player_name} (attempt {attempt + 1})", 
-                             DebugLevel.ERROR, "MOVE_ERROR", player_name, self.move_count + 1)
-                    debug_log(f"Failed moves history: {list(self.failed_moves[player_name])}", 
-                             DebugLevel.WARNING, "FAILED_HISTORY", player_name, self.move_count + 1)
+                    from debug_console import debug_log
+                    debug_log(f"FAILED: Move {action} invalid, attempt {attempt + 1}/{max_attempts}")
+                    debug_log(f"Failed moves for {player_name}: {list(self.failed_moves[player_name])}")
                 except:
                     pass
                 if attempt == max_attempts - 1:

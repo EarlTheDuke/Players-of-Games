@@ -26,18 +26,10 @@ def call_grok(prompt: str, api_key: str, model: str = "grok-beta") -> Optional[s
     Returns:
         The response content or None if failed
     """
-    try:
-        from debug_console import debug_log, DebugLevel
-    except ImportError:
-        debug_log = lambda *args, **kwargs: None
-        DebugLevel = type('DebugLevel', (), {'API': 'API', 'ERROR': 'ERROR'})()
-    
     if not api_key:
-        debug_log(f"❌ GROK API ERROR: No API key provided", DebugLevel.ERROR, "API_ERROR")
         raise ValueError("Grok API key not provided")
     
-    debug_log(f"🌐 GROK API START: Model={model}, Key={api_key[:10]}...", DebugLevel.API, "GROK_START")
-    debug_log(f"🌐 Prompt length: {len(prompt)} chars", DebugLevel.API, "GROK_START")
+    print(f"DEBUG: Calling Grok API with key starting: {api_key[:10]}...")
     
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -55,11 +47,8 @@ def call_grok(prompt: str, api_key: str, model: str = "grok-beta") -> Optional[s
     
     for attempt in range(MAX_RETRIES):
         try:
-            debug_log(f"🌐 GROK ATTEMPT {attempt + 1}/{MAX_RETRIES}: Calling {GROK_ENDPOINT}", 
-                     DebugLevel.API, "GROK_ATTEMPT")
-            
-            import time
-            start_time = time.time()
+            print(f"DEBUG: Sending request to {GROK_ENDPOINT}")
+            print(f"DEBUG: Payload: {payload}")
             
             response = requests.post(
                 GROK_ENDPOINT,
@@ -68,90 +57,44 @@ def call_grok(prompt: str, api_key: str, model: str = "grok-beta") -> Optional[s
                 timeout=API_TIMEOUT
             )
             
-            call_duration = time.time() - start_time
-            
-            debug_log(f"✅ GROK RESPONSE: Status={response.status_code}, Duration={call_duration:.2f}s", 
-                     DebugLevel.API, "GROK_SUCCESS")
+            print(f"DEBUG: Response status: {response.status_code}")
+            print(f"DEBUG: Response headers: {dict(response.headers)}")
             
             response.raise_for_status()
             
             data = response.json()
-            debug_log(f"🔍 GROK RAW RESPONSE: {json.dumps(data, indent=2)[:500]}...", 
-                     DebugLevel.API, "GROK_DEBUG")
-            
             if 'choices' in data and len(data['choices']) > 0:
-                choice = data['choices'][0]
-                debug_log(f"🔍 GROK CHOICE STRUCTURE: {json.dumps(choice, indent=2)[:300]}...", 
-                         DebugLevel.API, "GROK_DEBUG")
-                
-                # Check if message exists and has content
-                if 'message' in choice and 'content' in choice['message']:
-                    content = choice['message']['content']
-                    if content and content.strip():  # Ensure content is not empty or whitespace
-                        debug_log(f"✅ GROK SUCCESS: Content length={len(content)} chars", 
-                                 DebugLevel.API, "GROK_SUCCESS")
-                        debug_log(f"✅ GROK CONTENT PREVIEW: {content[:200]}...", 
-                                 DebugLevel.API, "GROK_SUCCESS")
-                        return content
-                    else:
-                        debug_log(f"❌ GROK EMPTY CONTENT: Message exists but content is empty/whitespace", 
-                                 DebugLevel.ERROR, "GROK_ERROR")
-                        debug_log(f"❌ GROK RAW CONTENT: '{content}' (length: {len(content) if content else 0})", 
-                                 DebugLevel.ERROR, "GROK_ERROR")
-                        return None
-                else:
-                    debug_log(f"❌ GROK MISSING MESSAGE: Choice has no 'message' or 'content' field", 
-                             DebugLevel.ERROR, "GROK_ERROR")
-                    return None
+                return data['choices'][0]['message']['content']
             else:
-                debug_log(f"❌ GROK FORMAT ERROR: No choices in response: {data}", 
-                         DebugLevel.ERROR, "GROK_ERROR")
+                print(f"Unexpected Grok API response format: {data}")
                 return None
                 
         except requests.exceptions.RequestException as e:
-            call_duration = time.time() - start_time if 'start_time' in locals() else 0
-            debug_log(f"❌ GROK ATTEMPT {attempt + 1} FAILED: {e} (Duration: {call_duration:.2f}s)", 
-                     DebugLevel.ERROR, "GROK_ERROR")
-            
+            error_msg = f"Grok API call attempt {attempt + 1} failed: {e}"
+            print(error_msg)
             if hasattr(e, 'response') and e.response is not None:
-                debug_log(f"❌ GROK HTTP ERROR: Status={e.response.status_code}", 
-                         DebugLevel.ERROR, "GROK_ERROR")
-                debug_log(f"❌ GROK ERROR CONTENT: {e.response.text[:500]}", 
-                         DebugLevel.ERROR, "GROK_ERROR")
+                print(f"Response status: {e.response.status_code}")
+                print(f"Response content: {e.response.text[:500]}...")  # Show more content
                 
                 # Check for specific error types
                 if e.response.status_code == 400:
-                    debug_log("❌ GROK 400: Bad Request - invalid model or request format", 
-                             DebugLevel.ERROR, "GROK_ERROR")
+                    print("ERROR: Bad Request - possibly invalid model name or request format")
                 elif e.response.status_code == 401:
-                    debug_log("❌ GROK 401: Unauthorized - check API key", 
-                             DebugLevel.ERROR, "GROK_ERROR")
+                    print("ERROR: Unauthorized - check API key")
                 elif e.response.status_code == 403:
-                    debug_log("❌ GROK 403: Forbidden - API key lacks permission", 
-                             DebugLevel.ERROR, "GROK_ERROR")
+                    print("ERROR: Forbidden - API key may not have permission")
                 elif e.response.status_code == 404:
-                    debug_log("❌ GROK 404: Not Found - check endpoint URL", 
-                             DebugLevel.ERROR, "GROK_ERROR")
+                    print("ERROR: Not Found - check endpoint URL")
                 elif e.response.status_code == 429:
-                    debug_log("❌ GROK 429: Rate Limited - too many requests", 
-                             DebugLevel.ERROR, "GROK_ERROR")
+                    print("ERROR: Rate Limited - too many requests")
                     
             if attempt < MAX_RETRIES - 1:
-                debug_log(f"⏳ GROK RETRY: Backing off before attempt {attempt + 2}", 
-                         DebugLevel.API, "GROK_RETRY")
                 exponential_backoff(attempt)
             else:
-                debug_log("❌ GROK FINAL FAILURE: All retry attempts exhausted", 
-                         DebugLevel.ERROR, "GROK_FAILURE")
+                print("All Grok API retry attempts failed")
                 return None
-                
         except json.JSONDecodeError as e:
-            debug_log(f"❌ GROK JSON ERROR: Failed to decode response: {e}", 
-                     DebugLevel.ERROR, "GROK_ERROR")
-            return None
-        except Exception as e:
-            debug_log(f"❌ GROK UNEXPECTED ERROR: {e}", 
-                     DebugLevel.ERROR, "GROK_ERROR")
+            print(f"Failed to decode Grok API response: {e}")
             return None
     
     return None
@@ -169,18 +112,10 @@ def call_claude(prompt: str, api_key: str, model: str = "claude-3-5-sonnet-20241
     Returns:
         The response content or None if failed
     """
-    try:
-        from debug_console import debug_log, DebugLevel
-    except ImportError:
-        debug_log = lambda *args, **kwargs: None
-        DebugLevel = type('DebugLevel', (), {'API': 'API', 'ERROR': 'ERROR'})()
-    
     if not api_key:
-        debug_log(f"❌ CLAUDE API ERROR: No API key provided", DebugLevel.ERROR, "API_ERROR")
         raise ValueError("Claude API key not provided")
     
-    debug_log(f"🌐 CLAUDE API START: Model={model}, Key={api_key[:10]}...", DebugLevel.API, "CLAUDE_START")
-    debug_log(f"🌐 Prompt length: {len(prompt)} chars", DebugLevel.API, "CLAUDE_START")
+    print(f"DEBUG: Calling Claude API with key starting: {api_key[:10]}...")
     
     headers = {
         "x-api-key": api_key,
@@ -198,11 +133,8 @@ def call_claude(prompt: str, api_key: str, model: str = "claude-3-5-sonnet-20241
     
     for attempt in range(MAX_RETRIES):
         try:
-            debug_log(f"🌐 CLAUDE ATTEMPT {attempt + 1}/{MAX_RETRIES}: Calling {CLAUDE_ENDPOINT}", 
-                     DebugLevel.API, "CLAUDE_ATTEMPT")
-            
-            import time
-            start_time = time.time()
+            print(f"DEBUG: Sending request to {CLAUDE_ENDPOINT}")
+            print(f"DEBUG: Payload: {payload}")
             
             response = requests.post(
                 CLAUDE_ENDPOINT,
@@ -211,67 +143,31 @@ def call_claude(prompt: str, api_key: str, model: str = "claude-3-5-sonnet-20241
                 timeout=API_TIMEOUT
             )
             
-            call_duration = time.time() - start_time
-            
-            debug_log(f"✅ CLAUDE RESPONSE: Status={response.status_code}, Duration={call_duration:.2f}s", 
-                     DebugLevel.API, "CLAUDE_SUCCESS")
+            print(f"DEBUG: Response status: {response.status_code}")
+            print(f"DEBUG: Response headers: {dict(response.headers)}")
             
             response.raise_for_status()
             
             data = response.json()
             if 'content' in data and len(data['content']) > 0:
-                content = data['content'][0]['text']
-                debug_log(f"✅ CLAUDE SUCCESS: Content length={len(content)} chars", 
-                         DebugLevel.API, "CLAUDE_SUCCESS")
-                debug_log(f"✅ CLAUDE CONTENT PREVIEW: {content[:200]}...", 
-                         DebugLevel.API, "CLAUDE_SUCCESS")
-                return content
+                return data['content'][0]['text']
             else:
-                debug_log(f"❌ CLAUDE FORMAT ERROR: Unexpected response format: {data}", 
-                         DebugLevel.ERROR, "CLAUDE_ERROR")
+                print(f"Unexpected Claude API response format: {data}")
                 return None
                 
         except requests.exceptions.RequestException as e:
-            call_duration = time.time() - start_time if 'start_time' in locals() else 0
-            debug_log(f"❌ CLAUDE ATTEMPT {attempt + 1} FAILED: {e} (Duration: {call_duration:.2f}s)", 
-                     DebugLevel.ERROR, "CLAUDE_ERROR")
-            
+            error_msg = f"Claude API call attempt {attempt + 1} failed: {e}"
+            print(error_msg)
             if hasattr(e, 'response') and e.response is not None:
-                debug_log(f"❌ CLAUDE HTTP ERROR: Status={e.response.status_code}", 
-                         DebugLevel.ERROR, "CLAUDE_ERROR")
-                debug_log(f"❌ CLAUDE ERROR CONTENT: {e.response.text[:500]}", 
-                         DebugLevel.ERROR, "CLAUDE_ERROR")
-                
-                # Check for specific error types
-                if e.response.status_code == 400:
-                    debug_log("❌ CLAUDE 400: Bad Request - invalid model or request format", 
-                             DebugLevel.ERROR, "CLAUDE_ERROR")
-                elif e.response.status_code == 401:
-                    debug_log("❌ CLAUDE 401: Unauthorized - check API key", 
-                             DebugLevel.ERROR, "CLAUDE_ERROR")
-                elif e.response.status_code == 403:
-                    debug_log("❌ CLAUDE 403: Forbidden - API key lacks permission", 
-                             DebugLevel.ERROR, "CLAUDE_ERROR")
-                elif e.response.status_code == 429:
-                    debug_log("❌ CLAUDE 429: Rate Limited - too many requests", 
-                             DebugLevel.ERROR, "CLAUDE_ERROR")
-                    
+                print(f"Response status: {e.response.status_code}")
+                print(f"Response content: {e.response.text[:200]}...")
             if attempt < MAX_RETRIES - 1:
-                debug_log(f"⏳ CLAUDE RETRY: Backing off before attempt {attempt + 2}", 
-                         DebugLevel.API, "CLAUDE_RETRY")
                 exponential_backoff(attempt)
             else:
-                debug_log("❌ CLAUDE FINAL FAILURE: All retry attempts exhausted", 
-                         DebugLevel.ERROR, "CLAUDE_FAILURE")
+                print("All Claude API retry attempts failed")
                 return None
-                
         except json.JSONDecodeError as e:
-            debug_log(f"❌ CLAUDE JSON ERROR: Failed to decode response: {e}", 
-                     DebugLevel.ERROR, "CLAUDE_ERROR")
-            return None
-        except Exception as e:
-            debug_log(f"❌ CLAUDE UNEXPECTED ERROR: {e}", 
-                     DebugLevel.ERROR, "CLAUDE_ERROR")
+            print(f"Failed to decode Claude API response: {e}")
             return None
     
     return None
