@@ -8,7 +8,7 @@ PIECE_SYMBOLS = {
     'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'   # Black pieces
 }
 
-def render_chess_board_with_info(board: chess.Board, player_info=None, highlight_squares=None, board_size=400):
+def render_chess_board_with_info(board: chess.Board, player_info=None, highlight_squares=None, last_move=None, board_size=400):
     """
     Render a beautiful chess board with player info and captured pieces.
     
@@ -16,6 +16,7 @@ def render_chess_board_with_info(board: chess.Board, player_info=None, highlight
         board: python-chess Board object
         player_info: Dict with player names and colors {'white': 'Player1', 'black': 'Player2'}
         highlight_squares: List of squares to highlight (e.g., ['e4', 'e5'])
+        last_move: Last move made (chess.Move object) - will be highlighted in yellow
         board_size: Size of the board in pixels
     
     Returns:
@@ -27,8 +28,16 @@ def render_chess_board_with_info(board: chess.Board, player_info=None, highlight
     # Get captured pieces
     captured_pieces = get_captured_pieces(board)
     
+    # Add last move squares to highlight_squares for yellow highlighting
+    combined_highlights = highlight_squares[:] if highlight_squares else []
+    if last_move:
+        # Add from and to squares of the last move for yellow highlighting
+        from_square = chess.square_name(last_move.from_square)
+        to_square = chess.square_name(last_move.to_square)
+        combined_highlights.extend([from_square, to_square])
+    
     # Generate the basic board HTML
-    board_html = render_chess_board(board, highlight_squares, board_size)
+    board_html = render_chess_board(board, combined_highlights, board_size)
     
     # Add player info and captured pieces panel
     info_panel_width = 160  # Further reduced width to prevent cutoff

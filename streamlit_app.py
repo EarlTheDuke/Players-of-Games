@@ -175,9 +175,17 @@ def main():
                 'white': 'White (Grok)', 
                 'black': 'Black (Claude)'
             }
+            
+            # Get the last move for highlighting
+            last_move = None
+            if game.board.move_stack:  # Check if any moves have been made
+                last_move = game.board.move_stack[-1]  # Get the most recent move
+            
             board_html = chess_board_renderer.render_chess_board_with_info(
                 game.board, 
-                player_names
+                player_names,
+                highlight_squares=None,
+                last_move=last_move
             )
             st.components.v1.html(board_html, height=520, width=660)
         except Exception as e:
