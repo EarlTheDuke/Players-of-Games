@@ -101,18 +101,19 @@ class ChessGame(BaseGame):
             True if move was valid and applied
         """
         try:
-            # Clean the action string
-            action = action.strip().lower()
+            # Clean the action string (preserve case for algebraic notation)
+            action = action.strip()
             
-            # Try to parse as UCI move first
+            # Try to parse as UCI move first (UCI should be lowercase)
             move = None
             try:
-                move = chess.Move.from_uci(action)
+                move = chess.Move.from_uci(action.lower())
+                print(f"DEBUG: Successfully parsed UCI move: {action.lower()} -> {move}")
             except (ValueError, chess.InvalidMoveError):
-                # If UCI parsing fails, try algebraic notation
+                # If UCI parsing fails, try algebraic notation (preserve case)
                 try:
                     print(f"DEBUG: Trying to parse algebraic notation: {action}")
-                    # Convert algebraic to move object
+                    # Convert algebraic to move object (case-sensitive)
                     move = self.board.parse_san(action)
                     print(f"DEBUG: Successfully parsed algebraic move: {action} -> {move}")
                 except (ValueError, chess.InvalidMoveError, chess.IllegalMoveError) as e:
