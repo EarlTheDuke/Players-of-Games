@@ -95,7 +95,7 @@ class ChessGame(BaseGame):
         Validate and apply a chess move.
         
         Args:
-            action: UCI move string (e.g., "e2e4")
+            action: UCI move string (e.g., "e2e4") or algebraic notation (e.g., "nf3")
             
         Returns:
             True if move was valid and applied
@@ -104,8 +104,24 @@ class ChessGame(BaseGame):
             # Clean the action string
             action = action.strip().lower()
             
-            # Parse UCI move
-            move = chess.Move.from_uci(action)
+            # Try to parse as UCI move first
+            move = None
+            try:
+                move = chess.Move.from_uci(action)
+            except (ValueError, chess.InvalidMoveError):
+                # If UCI parsing fails, try algebraic notation
+                try:
+                    print(f"DEBUG: Trying to parse algebraic notation: {action}")
+                    # Convert algebraic to move object
+                    move = self.board.parse_san(action)
+                    print(f"DEBUG: Successfully parsed algebraic move: {action} -> {move}")
+                except (ValueError, chess.InvalidMoveError, chess.IllegalMoveError) as e:
+                    print(f"DEBUG: Failed to parse algebraic notation {action}: {e}")
+                    return False
+            
+            if move is None:
+                print(f"DEBUG: Could not parse move: {action}")
+                return False
             
             # Debug logging
             print(f"DEBUG: Attempting move {action} for {self.current_player}")
@@ -221,10 +237,12 @@ Available moves: {", ".join(shown_moves)}
 === ANTI-BLUNDER CHECK ===
 Before finalizing your move, ask: "If I play this move, what is my opponent's best response? Am I hanging any pieces?"
 
-CRITICAL: You MUST choose EXACTLY one move from the legal moves list above. Base your decision on the full PGN context and current position analysis.
+CRITICAL: You MUST choose a legal move. You can use either:
+- UCI format (e.g., e2e4, g1f3, e1g1)
+- Algebraic notation (e.g., e4, Nf3, O-O)
 
 Format your response:
-MOVE: [choose EXACTLY one from legal moves above]
+MOVE: [your move in UCI format (e2e4) or algebraic notation (e4, Nf3, O-O)]
 REASONING: [75-125 words: Explain your choice based on opening principles, PGN context, and tactical considerations. Mention your top 2-3 candidate moves and why you chose this one.]
 
 Your move:"""

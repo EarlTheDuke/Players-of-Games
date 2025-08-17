@@ -175,7 +175,7 @@ def call_claude(prompt: str, api_key: str, model: str = "claude-3-5-sonnet-20241
 
 def parse_chess_move(response: str) -> Optional[str]:
     """
-    Parse a chess move in UCI notation from an AI response.
+    Parse a chess move from an AI response, supporting both UCI and algebraic notation.
     
     Args:
         response: The AI response text
@@ -186,16 +186,32 @@ def parse_chess_move(response: str) -> Optional[str]:
     if not response:
         return None
     
-    # Look for MOVE: prefix first
-    move_match = re.search(r'MOVE:\s*([a-h][1-8][a-h][1-8][qrbnQRBN]?)', response, re.IGNORECASE)
-    if move_match:
-        return move_match.group(1).lower()
+    # Look for MOVE: prefix first - try UCI format
+    uci_match = re.search(r'MOVE:\s*([a-h][1-8][a-h][1-8][qrbnQRBN]?)', response, re.IGNORECASE)
+    if uci_match:
+        return uci_match.group(1).lower()
+    
+    # Look for MOVE: prefix with algebraic notation (e.g., Nf3, Nbc6, O-O)
+    algebraic_match = re.search(r'MOVE:\s*([KQRBN]?[a-h]?[1-8]?x?[a-h][1-8][=QRBN]?[+#]?|O-O-O|O-O)', response, re.IGNORECASE)
+    if algebraic_match:
+        algebraic_move = algebraic_match.group(1).strip()
+        print(f"DEBUG: Found algebraic move: {algebraic_move}")
+        # Return the algebraic move - it will be converted to UCI in the chess game validation
+        return algebraic_move.lower()
     
     # Fallback: look for UCI pattern anywhere in response
     uci_pattern = r'\b([a-h][1-8][a-h][1-8][qrbnQRBN]?)\b'
     matches = re.findall(uci_pattern, response, re.IGNORECASE)
     if matches:
         return matches[0].lower()
+    
+    # Fallback: look for algebraic notation anywhere
+    algebraic_pattern = r'\b([KQRBN]?[a-h]?[1-8]?x?[a-h][1-8][=QRBN]?[+#]?|O-O-O|O-O)\b'
+    algebraic_matches = re.findall(algebraic_pattern, response, re.IGNORECASE)
+    if algebraic_matches:
+        algebraic_move = algebraic_matches[0].strip()
+        print(f"DEBUG: Found algebraic move (fallback): {algebraic_move}")
+        return algebraic_move.lower()
     
     return None
 
