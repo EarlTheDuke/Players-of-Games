@@ -7,6 +7,7 @@ import streamlit as st
 from games.chess_game import ChessGame
 from games.tictactoe_game import TicTacToeGame
 import config
+from datetime import datetime
 
 
 def validate_api_keys() -> bool:
@@ -383,6 +384,28 @@ def run_streamlit_app():
                     game_info = game.get_game_info()
                     for key, value in game_info.items():
                         st.write(f"**{key.replace('_', ' ').title()}:** {value}")
+            
+            # PGN History (for chess games)
+            if game_type.lower() == 'chess' and hasattr(game, 'get_pgn_history'):
+                with st.expander("♟️ PGN Game History", expanded=False):
+                    try:
+                        pgn_history = game.get_pgn_history(include_headers=True)
+                        opening_name = game.recognize_opening() if hasattr(game, 'recognize_opening') else "Unknown"
+                        
+                        st.write(f"**Opening:** {opening_name}")
+                        st.write(f"**Moves:** {game.board.fullmove_number}")
+                        st.write("**PGN:**")
+                        st.code(pgn_history, language="text")
+                        
+                        # Download PGN button
+                        st.download_button(
+                            label="📥 Download PGN",
+                            data=pgn_history,
+                            file_name=f"chess_game_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pgn",
+                            mime="application/x-chess-pgn"
+                        )
+                    except Exception as e:
+                        st.error(f"Error displaying PGN: {e}")
             
             # Position analysis
             if show_analysis and hasattr(game, 'get_position_analysis'):

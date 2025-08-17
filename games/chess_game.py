@@ -5,11 +5,11 @@ from typing import List, Optional, Tuple
 from .base_game import BaseGame
 import sys
 import os
+from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from api_utils import parse_chess_move
 from config import CHESS_PROMPT_TEMPLATE
 import io
-from datetime import datetime
 
 
 class ChessGame(BaseGame):
@@ -169,40 +169,69 @@ class ChessGame(BaseGame):
         current_board_display = self.get_state_display()
         move_number = self.board.fullmove_number
         
+        # Get PGN history and opening recognition
+        pgn_history = self.get_pgn_history(include_headers=True, max_moves=30)  # Last 30 moves for context
+        opening_name = self.recognize_opening()
+        
         # Debug: Log what we're showing the AI
         print(f"DEBUG: Showing AI - FEN: {current_fen}")
         print(f"DEBUG: Showing AI - Move #{move_number}, {color_name} to move")
+        print(f"DEBUG: Showing AI - Opening: {opening_name}")
         print(f"DEBUG: Showing AI - Legal moves: {shown_moves[:5]}...")
+        print(f"DEBUG: PGN length: {len(pgn_history)} characters")
         
         try:
             from debug_console import debug_log
             debug_log(f"Prompt: {color_name} move #{move_number}, {len(shown_moves)} legal moves")
-            debug_log(f"Prompt: FEN={current_fen}")
+            debug_log(f"Prompt: Opening={opening_name}, FEN={current_fen}")
+            debug_log(f"Prompt: PGN history length={len(pgn_history)} chars")
         except:
             pass
         
-        # Enhanced prompt with clearer instructions
-        enhanced_prompt = f"""You are playing chess as {color_name}.
+        # Enhanced prompt with PGN history and strategic context
+        enhanced_prompt = f"""You are an expert chess player playing as {color_name} in move #{move_number}.
 
-CRITICAL: This is move #{move_number}. You are {color_name}. 
+=== GAME HISTORY (PGN) - STUDY THIS FOR FULL CONTEXT ===
+{pgn_history}
 
-CURRENT POSITION (FEN): {current_fen}
+=== POSITION ANALYSIS ===
+Opening: {opening_name}
+Current Position (FEN): {current_fen}
+Move #{move_number}: {color_name} to move
 
-CURRENT BOARD:
+Current Board:
 {current_board_display}
 
-YOUR LEGAL MOVES (UCI format): {", ".join(shown_moves)}
+=== STRATEGIC CONTEXT FROM PGN HISTORY ===
+1. OPENING ANALYSIS: What opening pattern is this? How should you continue?
+2. OPPONENT PATTERNS: What has your opponent been doing? (aggressive/defensive/mistakes?)
+3. GAME FLOW: Are there repeated positions to avoid? Any tactical themes emerging?
+4. KING SAFETY: Have either king moved early? Is castling still possible?
 
-ABSOLUTELY CRITICAL RULES:
-1. You MUST choose EXACTLY one move from the legal moves list above
-2. Do NOT make up moves - only use moves from the legal moves list
-3. You are {color_name} - only move {color_name} pieces
-4. Respond ONLY with a move in UCI format (e.g., e2e4, g1f3, not e1e2 unless it's in the legal moves)
-5. This is move #{move_number} - the board has changed since move 1
+=== YOUR LEGAL MOVES ===
+Available moves (UCI format): {", ".join(shown_moves)}
+
+=== CHESS PRINCIPLES FOR THIS POSITION ===
+- In opening (moves 1-10): Develop pieces (knights before bishops), control center, castle early
+- NEVER move your king early unless forced by check or mate threat
+- Don't move the same piece twice without a strong reason
+- Look for tactics: forks, pins, skewers, discovered attacks
+- Consider your opponent's threats and plans based on the PGN history
+
+=== DECISION PROCESS ===
+1. Review the PGN above - what's the story of this game so far?
+2. What opening principles apply to this position?
+3. What are your opponent's likely plans based on their recent moves?
+4. Choose the move that best continues your strategic plan
+
+CRITICAL RULES:
+- You MUST choose EXACTLY one move from the legal moves list above
+- Base your decision on the FULL PGN CONTEXT, not just the current position
+- Consider the opening pattern and what typical moves are good here
 
 Format your response exactly like this:
 MOVE: [choose EXACTLY one from legal moves above]
-REASONING: [brief explanation of your choice]
+REASONING: [explain based on PGN history, opening principles, and position analysis]
 
 Your move:"""
         
@@ -240,6 +269,133 @@ Your move:"""
                 return None  # Force retry with different prompt
         
         return parsed_move
+    
+    def get_pgn_history(self, include_headers: bool = True, max_moves: Optional[int] = None) -> str:
+        """
+        Generate PGN history of the current game.
+        
+        Args:
+            include_headers: Whether to include PGN headers
+            max_moves: Maximum number of moves to include (None for all)
+            
+        Returns:
+            PGN string representation of the game
+        """
+        try:
+            # Create a game from the current board
+            game = chess.pgn.Game.from_board(self.board)
+            
+            if include_headers:
+                # Get player names
+                player_names = list(self.players.keys())
+                white_player = player_names[0] if len(player_names) > 0 else "White"
+                black_player = player_names[1] if len(player_names) > 1 else "Black"
+                
+                # Set PGN headers
+                game.headers["Event"] = "AI vs AI Chess Battle"
+                game.headers["Site"] = "Players of Games App"
+                game.headers["Date"] = datetime.now().strftime("%Y.%m.%d")
+                game.headers["Round"] = "1"
+                game.headers["White"] = white_player
+                game.headers["Black"] = black_player
+                game.headers["Result"] = "*"  # Ongoing game
+                
+                # Add additional metadata
+                if hasattr(self, 'move_count'):
+                    game.headers["PlyCount"] = str(len(self.board.move_stack))
+            
+            # Convert to PGN string
+            exporter = chess.pgn.StringExporter(headers=include_headers, variations=False, comments=False)
+            pgn_str = game.accept(exporter)
+            
+            # Handle move truncation if requested
+            if max_moves and self.board.fullmove_number > max_moves:
+                lines = pgn_str.split('\n')
+                header_lines = []
+                move_lines = []
+                
+                # Separate headers from moves
+                in_headers = True
+                for line in lines:
+                    if line.strip() == "":
+                        in_headers = False
+                        continue
+                    if in_headers and line.startswith('['):
+                        header_lines.append(line)
+                    elif not in_headers:
+                        move_lines.append(line)
+                
+                # Reconstruct with truncated moves
+                if move_lines:
+                    move_text = ' '.join(move_lines)
+                    # Simple truncation - keep last portion
+                    moves = move_text.split()
+                    if len(moves) > max_moves * 2:  # Approximate move pairs
+                        truncated_moves = moves[-(max_moves * 2):]
+                        move_text = "... " + ' '.join(truncated_moves)
+                    
+                    if include_headers:
+                        pgn_str = '\n'.join(header_lines) + '\n\n' + move_text
+                    else:
+                        pgn_str = move_text
+            
+            return pgn_str.strip()
+            
+        except Exception as e:
+            print(f"ERROR: Failed to generate PGN: {e}")
+            return f"[PGN generation failed: {str(e)}]"
+    
+    def recognize_opening(self) -> str:
+        """
+        Recognize the opening based on the first few moves.
+        
+        Returns:
+            Opening name or "Unknown Opening"
+        """
+        if len(self.board.move_stack) < 2:
+            return "Opening"
+        
+        # Get first few moves in UCI format
+        moves = [move.uci() for move in self.board.move_stack[:8]]  # First 8 plies
+        
+        # Common opening patterns
+        opening_patterns = {
+            # King's Pawn openings
+            ("e2e4", "e7e5"): "King's Pawn Game",
+            ("e2e4", "e7e5", "g1f3"): "King's Knight Opening",
+            ("e2e4", "e7e5", "g1f3", "b8c6"): "King's Knight Opening",
+            ("e2e4", "e7e5", "g1f3", "b8c6", "f1b5"): "Ruy Lopez",
+            ("e2e4", "e7e5", "g1f3", "b8c6", "f1c4"): "Italian Game",
+            ("e2e4", "e7e5", "f1c4", "f8c5"): "Italian Game",
+            
+            # Sicilian Defense
+            ("e2e4", "c7c5"): "Sicilian Defense",
+            ("e2e4", "c7c5", "g1f3"): "Sicilian Defense: Open",
+            
+            # French Defense
+            ("e2e4", "e7e6"): "French Defense",
+            
+            # Queen's Pawn openings
+            ("d2d4", "d7d5"): "Queen's Pawn Game",
+            ("d2d4", "g8f6"): "Indian Defense",
+            ("d2d4", "d7d5", "c2c4"): "Queen's Gambit",
+            
+            # English Opening
+            ("c2c4",): "English Opening",
+            
+            # Réti Opening
+            ("g1f3",): "Réti Opening",
+            
+            # Bird's Opening
+            ("f2f4",): "Bird's Opening",
+        }
+        
+        # Check patterns from longest to shortest
+        for pattern, name in sorted(opening_patterns.items(), key=lambda x: len(x[0]), reverse=True):
+            if len(moves) >= len(pattern) and tuple(moves[:len(pattern)]) == pattern:
+                return name
+        
+        return "Unknown Opening"
     
     def get_game_info(self) -> dict:
         """Get detailed information about the current game state."""
