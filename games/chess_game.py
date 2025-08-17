@@ -182,16 +182,16 @@ class ChessGame(BaseGame):
         
         try:
             from debug_console import debug_log
-            debug_log(f"Prompt: {color_name} move #{move_number}, {len(shown_moves)} legal moves")
-            debug_log(f"Prompt: Opening={opening_name}, FEN={current_fen}")
-            debug_log(f"Prompt: PGN history length={len(pgn_history)} chars")
+            debug_log(f"Enhanced Prompt: {color_name} move #{move_number}, {len(shown_moves)} legal moves")
+            debug_log(f"Enhanced Prompt: Opening={opening_name}, FEN={current_fen}")
+            debug_log(f"Enhanced Prompt: PGN history length={len(pgn_history)} chars")
         except:
             pass
         
-        # Enhanced prompt with PGN history and strategic context
-        enhanced_prompt = f"""You are an expert chess player playing as {color_name} in move #{move_number}.
+        # Enhanced prompt with strategic guidance and PGN context
+        enhanced_prompt = f"""You are an expert chess player (2000+ ELO) playing as {color_name}. Your priorities: king safety, piece development, center control, and tactical awareness.
 
-=== GAME HISTORY (PGN) - STUDY THIS FOR FULL CONTEXT ===
+=== GAME HISTORY (PGN) - ANALYZE FOR STRATEGIC CONTEXT ===
 {pgn_history}
 
 === POSITION ANALYSIS ===
@@ -202,38 +202,40 @@ Move #{move_number}: {color_name} to move
 Current Board:
 {current_board_display}
 
-=== STRATEGIC CONTEXT FROM PGN HISTORY ===
-1. OPENING ANALYSIS: What opening pattern is this? How should you continue?
-2. OPPONENT PATTERNS: What has your opponent been doing? (aggressive/defensive/mistakes?)
-3. GAME FLOW: Are there repeated positions to avoid? Any tactical themes emerging?
-4. KING SAFETY: Have either king moved early? Is castling still possible?
+=== STRATEGIC ASSESSMENT FROM PGN ===
+1. OPENING PATTERN: What opening is this? How should you continue based on typical plans?
+2. OPPONENT STYLE: From the PGN, is your opponent playing aggressively, defensively, or making errors?
+3. GAME PHASE: Opening (develop & castle), Middlegame (tactics & attack), or Endgame (king activity & pawns)?
+4. KEY WEAKNESSES: Any exposed kings, weak squares, or material imbalances to exploit?
 
 === YOUR LEGAL MOVES ===
-Available moves (UCI format): {", ".join(shown_moves)}
+Available moves: {", ".join(shown_moves)}
 
 === CHESS PRINCIPLES FOR THIS POSITION ===
-- In opening (moves 1-10): Develop pieces (knights before bishops), control center, castle early
-- NEVER move your king early unless forced by check or mate threat
-- Don't move the same piece twice without a strong reason
-- Look for tactics: forks, pins, skewers, discovered attacks
-- Consider your opponent's threats and plans based on the PGN history
+- OPENING (moves 1-10): Develop knights before bishops, control center (e4/d4/e5/d5), castle early
+- NEVER move king early unless forced by check or immediate mate threat
+- Look for tactics: checks, captures, threats (forks, pins, skewers)
+- Evaluate candidate moves: Does this improve my position? Does it create threats? Is it safe?
+- Consider opponent's likely response to your top 2-3 candidate moves
 
-=== DECISION PROCESS ===
-1. Review the PGN above - what's the story of this game so far?
-2. What opening principles apply to this position?
-3. What are your opponent's likely plans based on their recent moves?
-4. Choose the move that best continues your strategic plan
+=== ANTI-BLUNDER CHECK ===
+Before finalizing your move, ask: "If I play this move, what is my opponent's best response? Am I hanging any pieces?"
 
-CRITICAL RULES:
-- You MUST choose EXACTLY one move from the legal moves list above
-- Base your decision on the FULL PGN CONTEXT, not just the current position
-- Consider the opening pattern and what typical moves are good here
+CRITICAL: You MUST choose EXACTLY one move from the legal moves list above. Base your decision on the full PGN context and current position analysis.
 
-Format your response exactly like this:
+Format your response:
 MOVE: [choose EXACTLY one from legal moves above]
-REASONING: [explain based on PGN history, opening principles, and position analysis]
+REASONING: [75-125 words: Explain your choice based on opening principles, PGN context, and tactical considerations. Mention your top 2-3 candidate moves and why you chose this one.]
 
 Your move:"""
+        
+        # Log final prompt details for monitoring
+        try:
+            from debug_console import debug_log
+            debug_log(f"Enhanced Prompt: Total length={len(enhanced_prompt)} chars")
+            print(f"DEBUG: Enhanced prompt total length: {len(enhanced_prompt)} characters")
+        except:
+            pass
         
         return enhanced_prompt
     
