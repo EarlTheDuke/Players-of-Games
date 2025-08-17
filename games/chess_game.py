@@ -347,55 +347,58 @@ Your move:"""
     
     def recognize_opening(self) -> str:
         """
-        Recognize the opening based on the first few moves.
+        Improved opening recognition: More patterns, deeper check, handles variants/transpositions.
         
         Returns:
             Opening name or "Unknown Opening"
         """
-        if len(self.board.move_stack) < 2:
+        if len(self.board.move_stack) < 1:
             return "Opening"
         
-        # Get first few moves in UCI format
-        moves = [move.uci() for move in self.board.move_stack[:8]]  # First 8 plies
+        # Get first few moves in UCI format - increased to 10 plies for better detection
+        moves = [move.uci() for move in self.board.move_stack[:10]]  # Up to 10 plies (5 moves) for variants
         
-        # Common opening patterns
-        opening_patterns = {
-            # King's Pawn openings
-            ("e2e4", "e7e5"): "King's Pawn Game",
-            ("e2e4", "e7e5", "g1f3"): "King's Knight Opening",
-            ("e2e4", "e7e5", "g1f3", "b8c6"): "King's Knight Opening",
-            ("e2e4", "e7e5", "g1f3", "b8c6", "f1b5"): "Ruy Lopez",
-            ("e2e4", "e7e5", "g1f3", "b8c6", "f1c4"): "Italian Game",
-            ("e2e4", "e7e5", "f1c4", "f8c5"): "Italian Game",
-            
-            # Sicilian Defense
-            ("e2e4", "c7c5"): "Sicilian Defense",
-            ("e2e4", "c7c5", "g1f3"): "Sicilian Defense: Open",
-            
-            # French Defense
-            ("e2e4", "e7e6"): "French Defense",
-            
-            # Queen's Pawn openings
-            ("d2d4", "d7d5"): "Queen's Pawn Game",
-            ("d2d4", "g8f6"): "Indian Defense",
-            ("d2d4", "d7d5", "c2c4"): "Queen's Gambit",
-            
-            # English Opening
-            ("c2c4",): "English Opening",
-            
-            # Réti Opening
-            ("g1f3",): "Réti Opening",
-            
-            # Bird's Opening
-            ("f2f4",): "Bird's Opening",
-        }
+        # Expanded patterns (top common from Lichess/Chess.com data; UCI format; sorted longest first for specificity)
+        opening_patterns = [
+            (["e2e4", "e7e5", "g1f3", "b8c6", "f1b5"], "Ruy Lopez"),  # Very common vs. e5
+            (["e2e4", "e7e5", "g1f3", "b8c6", "d2d4"], "Scotch Game"),
+            (["e2e4", "e7e5", "g1f3", "b8c6", "f1c4"], "Italian Game"),
+            (["e2e4", "e7e5", "g1f3", "g8f6"], "Petroff Defense"),
+            (["e2e4", "e7e5", "b1c3"], "Vienna Game"),
+            (["e2e4", "e7e5", "d1h5"], "Scholar's Mate Attempt"),  # Common beginner trap
+            (["e2e4", "e7e5"], "King's Pawn Game"),
+            (["e2e4", "c7c5"], "Sicilian Defense"),  # Most popular Black response to e4
+            (["e2e4", "e7e6"], "French Defense"),
+            (["e2e4", "c7c6"], "Caro-Kann Defense"),
+            (["e2e4", "g8f6"], "Alekhine Defense"),
+            (["e2e4", "d7d6"], "Pirc Defense"),
+            (["e2e4", "d7d5"], "Scandinavian Defense"),
+            (["d2d4", "d7d5", "c2c4"], "Queen's Gambit"),
+            (["d2d4", "g8f6", "c2c4", "e7e6", "b1c3", "f8b4"], "Nimzo-Indian Defense"),
+            (["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "d7d5"], "Grünfeld Defense"),
+            (["d2d4", "g8f6", "c2c4", "g7g6"], "King's Indian Defense"),
+            (["d2d4", "g8f6", "c2c4", "c7c5"], "Benoni Defense"),
+            (["d2d4", "g8f6"], "Indian Defenses (General)"),
+            (["d2d4", "d7d5"], "Queen's Pawn Game"),
+            (["c2c4"], "English Opening"),
+            (["g1f3"], "Réti Opening"),
+            (["d2d4", "f7f5"], "Dutch Defense"),
+            (["f2f4"], "Bird's Opening"),
+            (["b2b4"], "Polish Opening (Sokolsky)"),
+            (["g2g4"], "Grob's Attack"),
+        ]
         
-        # Check patterns from longest to shortest
-        for pattern, name in sorted(opening_patterns.items(), key=lambda x: len(x[0]), reverse=True):
-            if len(moves) >= len(pattern) and tuple(moves[:len(pattern)]) == pattern:
+        # Sort by descending pattern length to match specifics first
+        opening_patterns.sort(key=lambda x: len(x[0]), reverse=True)
+        
+        for pattern, name in opening_patterns:
+            if moves[:len(pattern)] == pattern:
                 return name
+            # Fallback for close matches (e.g., transposition variants)
+            if len(moves) >= len(pattern) and set(moves[:len(pattern)]) == set(pattern):
+                return f"Variant of {name}"
         
-        return "Unknown Opening"
+        return "Unknown Opening or Custom Position"
     
     def get_game_info(self) -> dict:
         """Get detailed information about the current game state."""
