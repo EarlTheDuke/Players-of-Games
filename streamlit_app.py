@@ -24,6 +24,10 @@ def main():
         layout="wide"
     )
     
+    # Initialize session state for debug outputs
+    if 'debug_outputs' not in st.session_state:
+        st.session_state.debug_outputs = []
+    
     st.title("🎮 Players of Games - AI vs AI Arena")
     st.markdown("**Watch Grok from xAI battle Claude from Anthropic in strategic games!**")
     
@@ -170,13 +174,27 @@ def main():
                                 help="This is the complete debug output - select all and copy to share"
                             )
                             
-                            # Also save debug output to error logger for sidebar access
-                            if not success:
-                                log_error("Move validation failed with debug output", ErrorCategory.VALIDATION, {
-                                    "current_player": game.current_player,
-                                    "move_count": game.move_count,
-                                    "full_debug_output": debug_text
-                                })
+                        # ALWAYS save debug output to session state for sidebar access
+                        debug_entry = {
+                            "timestamp": datetime.now().strftime("%H:%M:%S"),
+                            "player": game.current_player,
+                            "move_count": game.move_count,
+                            "success": success,
+                            "debug_output": debug_text
+                        }
+                        st.session_state.debug_outputs.append(debug_entry)
+                        
+                        # Keep only last 10 debug outputs
+                        if len(st.session_state.debug_outputs) > 10:
+                            st.session_state.debug_outputs = st.session_state.debug_outputs[-10:]
+                            
+                        # Also save to error logger if failed
+                        if not success:
+                            log_error("Move validation failed with debug output", ErrorCategory.VALIDATION, {
+                                "current_player": game.current_player,
+                                "move_count": game.move_count,
+                                "full_debug_output": debug_text
+                            })
                     
                     if not success:
                         st.error("❌ Move failed - Check debug output above for details")
@@ -417,33 +435,49 @@ def main():
     # Debug output viewer - Always expanded for easy access
     with st.sidebar.expander("🔍 Debug Output (Copy/Paste Here)", expanded=True):
         try:
-            # Get recent validation errors with debug output
-            validation_logs = error_logger.get_logs(ErrorLevel.ERROR, ErrorCategory.VALIDATION, last_n=5)
+            # Get debug outputs from session state
+            debug_outputs = st.session_state.get('debug_outputs', [])
             
-            if validation_logs:
+            # Filter for failed moves only
+            failed_debug_outputs = [d for d in debug_outputs if not d['success']]
+            
+            if failed_debug_outputs:
                 st.markdown("**📋 Copy any debug output below:**")
+                st.markdown(f"*Found {len(failed_debug_outputs)} validation failures*")
                 
-                for i, log in enumerate(validation_logs):
-                    if 'full_debug_output' in log.get('context', {}):
-                        debug_output = log['context']['full_debug_output']
-                        timestamp = log['timestamp'][11:19]  # Just time
-                        player = log['context'].get('current_player', 'Unknown')
-                        move_count = log['context'].get('move_count', '?')
-                        
-                        st.markdown(f"**🚨 Move {move_count} - {player} [{timestamp}]:**")
-                        
-                        # Show the full debug output in a text area for easy copying
-                        st.text_area(
-                            f"Debug Output {i+1}",
-                            value=debug_output,
-                            height=150,
-                            key=f"debug_text_{i}",
-                            help="Select all (Ctrl+A) and copy (Ctrl+C) to share this debug output"
-                        )
-                        
-                        st.markdown("---")  # Separator
+                for i, debug_entry in enumerate(reversed(failed_debug_outputs[-5:])):  # Last 5, newest first
+                    timestamp = debug_entry['timestamp']
+                    player = debug_entry['player']
+                    move_count = debug_entry['move_count']
+                    debug_output = debug_entry['debug_output']
+                    
+                    st.markdown(f"**🚨 Move {move_count} - {player} [{timestamp}]:**")
+                    
+                    # Show the full debug output in a text area for easy copying
+                    st.text_area(
+                        f"Debug Output {i+1}",
+                        value=debug_output,
+                        height=200,
+                        key=f"session_debug_{i}_{move_count}",
+                        help="Select all (Ctrl+A) and copy (Ctrl+C) to share this debug output"
+                    )
+                    
+                    st.markdown("---")  # Separator
             else:
-                st.info("🎯 **No validation failures yet**\n\nStart a new game and make moves. When a move fails validation, the debug output will appear here for easy copy/paste.")
+                # Check if we have any debug outputs at all
+                all_debug_outputs = st.session_state.get('debug_outputs', [])
+                if all_debug_outputs:
+                    st.info(f"🎯 **{len(all_debug_outputs)} moves processed, but no validation failures detected**\n\nThis might indicate the debug capture isn't working properly.")
+                    
+                    # Show recent moves for debugging
+                    st.markdown("**🔍 Recent Move Debug Info:**")
+                    for i, entry in enumerate(reversed(all_debug_outputs[-3:])):
+                        status = "✅ Success" if entry['success'] else "❌ Failed"
+                        st.text(f"Move {entry['move_count']} - {entry['player']}: {status}")
+                        if entry['debug_output']:
+                            st.text(f"  Debug length: {len(entry['debug_output'])} chars")
+                else:
+                    st.info("🎯 **No validation failures yet**\n\nStart a new game and make moves. When a move fails validation, the debug output will appear here for easy copy/paste.")
         except Exception as e:
             st.error(f"Debug viewer error: {e}")
     
