@@ -459,22 +459,46 @@ def run_streamlit_app():
                 st.warning("Game reset to starting position")
                 st.rerun()
         
-        # COLLISION DETECTION: Check for multiple active games
+        # COLLISION DETECTION: Check for multiple actual game objects
         try:
             from debug_console import debug_log, DebugLevel
             active_games = 0
+            game_keys = []
+            
             for key, value in st.session_state.items():
-                if 'game' in key.lower() and value is not None:
+                # Only count actual game objects, not just any key containing 'game'
+                if (hasattr(value, 'make_move') and hasattr(value, 'board') and 
+                    hasattr(value, 'current_player')):
                     active_games += 1
-                    if hasattr(value, 'board') and active_games > 1:
-                        debug_log(f"🚨 COLLISION: Multiple games detected! Key: {key}", 
+                    game_keys.append(key)
+                    
+                    if active_games > 1:
+                        debug_log(f"🚨 REAL COLLISION: Multiple game objects detected! Key: {key}", 
                                  DebugLevel.ERROR, "COLLISION")
             
             if active_games > 1:
-                debug_log(f"🚨 TOTAL ACTIVE GAMES: {active_games} (Should be 1)", 
+                debug_log(f"🚨 TOTAL ACTIVE GAME OBJECTS: {active_games} (Should be 1)", 
                          DebugLevel.ERROR, "COLLISION")
-        except:
-            pass
+                debug_log(f"Game object keys: {game_keys}", 
+                         DebugLevel.ERROR, "COLLISION")
+            elif active_games == 1:
+                debug_log(f"✅ Single game object detected: {game_keys[0]}", 
+                         DebugLevel.INFO, "COLLISION")
+            else:
+                debug_log("ℹ️ No game objects found in session state", 
+                         DebugLevel.INFO, "COLLISION")
+            
+            # Debug: Show all session state keys for analysis
+            all_keys = list(st.session_state.keys())
+            game_related_keys = [k for k in all_keys if 'game' in k.lower()]
+            debug_log(f"📋 All session keys: {all_keys}", 
+                     DebugLevel.INFO, "SESSION_DEBUG")
+            debug_log(f"🎮 Game-related keys: {game_related_keys}", 
+                     DebugLevel.INFO, "SESSION_DEBUG")
+                
+        except Exception as e:
+            debug_log(f"⚠️ Collision detection error: {e}", 
+                     DebugLevel.WARNING, "COLLISION")
         
         # Display game state (with safety check)
         if hasattr(st.session_state, 'game') and st.session_state.game:
