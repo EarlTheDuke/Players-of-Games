@@ -172,10 +172,18 @@ def run_streamlit_app():
     if config.CLAUDE_API_KEY:
         st.sidebar.text(f"Claude Key Preview: {config.CLAUDE_API_KEY[:8]}...")
     
-    # Check for API key configuration
-    api_keys_configured = bool(config.GROK_API_KEY and config.CLAUDE_API_KEY and 
-                              config.GROK_API_KEY != "test_grok_key_for_local_testing" and
-                              config.CLAUDE_API_KEY != "test_claude_key_for_local_testing")
+    # Check for API key configuration with error handling
+    try:
+        api_keys_configured = bool(
+            config.GROK_API_KEY and config.CLAUDE_API_KEY and 
+            len(str(config.GROK_API_KEY).strip()) > 10 and 
+            len(str(config.CLAUDE_API_KEY).strip()) > 10 and
+            str(config.GROK_API_KEY) != "test_grok_key_for_local_testing" and
+            str(config.CLAUDE_API_KEY) != "test_claude_key_for_local_testing"
+        )
+    except Exception as e:
+        st.error(f"Error checking API keys: {e}")
+        api_keys_configured = False
     
     if not api_keys_configured:
         st.warning("""
