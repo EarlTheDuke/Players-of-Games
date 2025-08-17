@@ -7,6 +7,16 @@ import random
 from typing import Optional, Dict, Any
 from config import GROK_ENDPOINT, CLAUDE_ENDPOINT, API_TIMEOUT, MAX_RETRIES
 
+try:
+    from error_logger import log_error, log_warning, log_info, ErrorCategory
+except ImportError:
+    # Fallback if error logger not available
+    log_error = log_warning = log_info = lambda *args, **kwargs: None
+    class ErrorCategory:
+        API_ERROR = "API_ERROR"
+        NETWORK = "NETWORK"
+        PARSING = "PARSING"
+
 
 def exponential_backoff(attempt: int) -> None:
     """Apply exponential backoff delay."""
