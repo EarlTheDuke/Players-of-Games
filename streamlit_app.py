@@ -117,8 +117,13 @@ def main():
                 st.rerun()
     
     with col3:
-        if st.button("⏩ Auto Play"):
-            st.session_state.auto_play = not st.session_state.get('auto_play', False)
+        auto_play_status = st.session_state.get('auto_play', False)
+        button_text = "⏸️ Stop Auto Play" if auto_play_status else "⏩ Start Auto Play"
+        if st.button(button_text):
+            st.session_state.auto_play = not auto_play_status
+            # Reset the timer when toggling
+            if 'auto_play_timer' in st.session_state:
+                del st.session_state.auto_play_timer
             st.session_state.last_button_press = f"Auto Play {'ON' if st.session_state.auto_play else 'OFF'}"
             st.rerun()
     
@@ -252,6 +257,36 @@ def main():
                     "current_player": getattr(game, 'current_player', 'unknown'),
                     "error": str(e)
                 }, e)
+        
+        # Auto Play Logic - Continue making moves if auto play is enabled
+        if st.session_state.get('auto_play', False):
+            if game.is_game_over():
+                # Game is over, turn off auto play
+                st.session_state.auto_play = False
+                st.success("🏁 Game Over! Auto Play has been stopped.")
+            else:
+                # Show auto play status
+                st.info("🤖 Auto Play is ON - Making moves automatically...")
+                
+                # Use a timer-based approach to control move speed
+                import time
+                
+                # Initialize auto play timer if not exists
+                if 'auto_play_timer' not in st.session_state:
+                    st.session_state.auto_play_timer = time.time()
+                
+                # Check if enough time has passed (2 seconds between moves for good viewing)
+                current_time = time.time()
+                if current_time - st.session_state.auto_play_timer >= 2.0:
+                    st.session_state.make_move = True
+                    st.session_state.auto_play_timer = current_time
+                    st.rerun()
+                else:
+                    # Show countdown and trigger auto-refresh
+                    remaining = 2.0 - (current_time - st.session_state.auto_play_timer)
+                    st.write(f"⏱️ Next move in {remaining:.1f} seconds...")
+                    # Use Streamlit's built-in auto-refresh
+                    st.rerun()
         
         # Display board
         try:
