@@ -217,63 +217,43 @@ class ChessGame(BaseGame):
         pgn_history = self.get_pgn_history(include_headers=True, max_moves=30)  # Last 30 moves for context
         opening_name = self.recognize_opening()
         
+        # PHASE-AWARE SYSTEM: Detect current game phase
+        game_phase, phase_info = self.detect_game_phase()
+        
         # Debug: Log what we're showing the AI
         print(f"DEBUG: Showing AI - FEN: {current_fen}")
         print(f"DEBUG: Showing AI - Move #{move_number}, {color_name} to move")
+        print(f"DEBUG: Showing AI - Game Phase: {game_phase.upper()}")
         print(f"DEBUG: Showing AI - Opening: {opening_name}")
         print(f"DEBUG: Showing AI - Legal moves: {shown_moves[:5]}...")
         print(f"DEBUG: PGN length: {len(pgn_history)} characters")
+        print(f"DEBUG: Phase Info - Pieces: {phase_info['piece_count']}, Material: {phase_info['total_material']}")
         
         try:
             from debug_console import debug_log
             debug_log(f"Enhanced Prompt: {color_name} move #{move_number}, {len(shown_moves)} legal moves")
-            debug_log(f"Enhanced Prompt: Opening={opening_name}, FEN={current_fen}")
+            debug_log(f"Enhanced Prompt: PHASE={game_phase.upper()}, Opening={opening_name}, FEN={current_fen}")
             debug_log(f"Enhanced Prompt: PGN history length={len(pgn_history)} chars")
+            debug_log(f"Phase Analysis: {phase_info['piece_count']} pieces, {phase_info['total_material']} material")
         except:
             pass
         
-        # Enhanced prompt with strategic guidance and PGN context
-        enhanced_prompt = f"""You are an expert chess player (2000+ ELO) playing as {color_name}. Your priorities: king safety, piece development, center control, and tactical awareness.
-{failed_moves_text}
-=== GAME HISTORY (PGN) - ANALYZE FOR STRATEGIC CONTEXT ===
-{pgn_history}
-
-=== POSITION ANALYSIS ===
-Opening: {opening_name}
-Current Position (FEN): {current_fen}
-Move #{move_number}: {color_name} to move
-
-Current Board:
-{current_board_display}
-
-=== STRATEGIC ASSESSMENT FROM PGN ===
-1. OPENING PATTERN: What opening is this? How should you continue based on typical plans?
-2. OPPONENT STYLE: From the PGN, is your opponent playing aggressively, defensively, or making errors?
-3. GAME PHASE: Opening (develop & castle), Middlegame (tactics & attack), or Endgame (king activity & pawns)?
-4. KEY WEAKNESSES: Any exposed kings, weak squares, or material imbalances to exploit?
-
-=== YOUR LEGAL MOVES ===
-Available moves: {", ".join(shown_moves)}
-
-=== CHESS PRINCIPLES FOR THIS POSITION ===
-- OPENING (moves 1-10): Develop knights before bishops, control center (e4/d4/e5/d5), castle early
-- NEVER move king early unless forced by check or immediate mate threat
-- Look for tactics: checks, captures, threats (forks, pins, skewers)
-- Evaluate candidate moves: Does this improve my position? Does it create threats? Is it safe?
-- Consider opponent's likely response to your top 2-3 candidate moves
-
-=== ANTI-BLUNDER CHECK ===
-Before finalizing your move, ask: "If I play this move, what is my opponent's best response? Am I hanging any pieces?"
-
-CRITICAL: You MUST choose a legal move. You can use either:
-- UCI format (e.g., e2e4, g1f3, e1g1)
-- Algebraic notation (e.g., e4, Nf3, O-O)
-
-Format your response:
-MOVE: [your move in UCI format (e2e4) or algebraic notation (e4, Nf3, O-O)]
-REASONING: [75-125 words: Explain your choice based on opening principles, PGN context, and tactical considerations. Mention your top 2-3 candidate moves and why you chose this one.]
-
-Your move:"""
+        # DYNAMIC PROMPT GENERATION based on game phase
+        if game_phase == 'opening':
+            enhanced_prompt = self.get_opening_prompt_template(
+                color_name, phase_info, shown_moves, failed_moves_text, 
+                pgn_history, opening_name, current_fen, current_board_display, move_number
+            )
+        elif game_phase == 'middlegame':
+            enhanced_prompt = self.get_middlegame_prompt_template(
+                color_name, phase_info, shown_moves, failed_moves_text,
+                pgn_history, opening_name, current_fen, current_board_display, move_number
+            )
+        else:  # endgame
+            enhanced_prompt = self.get_endgame_prompt_template(
+                color_name, phase_info, shown_moves, failed_moves_text,
+                pgn_history, opening_name, current_fen, current_board_display, move_number
+            )
         
         # Log final prompt details for monitoring
         try:
@@ -481,6 +461,92 @@ Your move:"""
         except Exception as e:
             print(f"ERROR: Failed to generate PGN: {e}")
             return f"[PGN generation failed: {str(e)}]"
+    
+    def detect_game_phase(self) -> tuple[str, dict]:
+        """
+        Intelligently detect the current game phase based on multiple factors.
+        
+        Returns:
+            tuple: (phase_name, phase_info) where phase_name is 'opening', 'middlegame', or 'endgame'
+                   and phase_info contains relevant statistics and characteristics
+        """
+        # Count pieces and material
+        piece_count = 0
+        material_count = {'white': 0, 'black': 0}
+        piece_types = {'white': {'queens': 0, 'rooks': 0, 'bishops': 0, 'knights': 0, 'pawns': 0},
+                      'black': {'queens': 0, 'rooks': 0, 'bishops': 0, 'knights': 0, 'pawns': 0}}
+        
+        piece_values = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, 
+                       chess.ROOK: 5, chess.QUEEN: 9}
+        
+        for square in chess.SQUARES:
+            piece = self.board.piece_at(square)
+            if piece:
+                piece_count += 1
+                color = 'white' if piece.color == chess.WHITE else 'black'
+                material_count[color] += piece_values.get(piece.piece_type, 0)
+                
+                if piece.piece_type == chess.QUEEN:
+                    piece_types[color]['queens'] += 1
+                elif piece.piece_type == chess.ROOK:
+                    piece_types[color]['rooks'] += 1
+                elif piece.piece_type == chess.BISHOP:
+                    piece_types[color]['bishops'] += 1
+                elif piece.piece_type == chess.KNIGHT:
+                    piece_types[color]['knights'] += 1
+                elif piece.piece_type == chess.PAWN:
+                    piece_types[color]['pawns'] += 1
+        
+        move_number = self.board.fullmove_number
+        total_material = material_count['white'] + material_count['black']
+        
+        # Check for castling rights (indicates opening/early middlegame)
+        castling_rights = self.board.has_kingside_castling_rights(chess.WHITE) or \
+                         self.board.has_queenside_castling_rights(chess.WHITE) or \
+                         self.board.has_kingside_castling_rights(chess.BLACK) or \
+                         self.board.has_queenside_castling_rights(chess.BLACK)
+        
+        # Check for developed pieces (knights and bishops off starting squares)
+        developed_pieces = 0
+        starting_knight_squares = [chess.B1, chess.G1, chess.B8, chess.G8]
+        starting_bishop_squares = [chess.C1, chess.F1, chess.C8, chess.F8]
+        
+        for square in starting_knight_squares + starting_bishop_squares:
+            piece = self.board.piece_at(square)
+            if not piece or piece.piece_type not in [chess.KNIGHT, chess.BISHOP]:
+                developed_pieces += 1
+        
+        # Phase detection logic
+        phase_info = {
+            'move_number': move_number,
+            'piece_count': piece_count,
+            'total_material': total_material,
+            'material_balance': material_count['white'] - material_count['black'],
+            'queens_on_board': piece_types['white']['queens'] + piece_types['black']['queens'],
+            'major_pieces': (piece_types['white']['queens'] + piece_types['white']['rooks'] + 
+                           piece_types['black']['queens'] + piece_types['black']['rooks']),
+            'minor_pieces': (piece_types['white']['bishops'] + piece_types['white']['knights'] + 
+                           piece_types['black']['bishops'] + piece_types['black']['knights']),
+            'castling_available': castling_rights,
+            'developed_pieces': developed_pieces,
+            'piece_breakdown': piece_types
+        }
+        
+        # ENDGAME: Very few pieces left or specific endgame patterns
+        if (piece_count <= 10 or  # 10 or fewer pieces total
+            total_material <= 20 or  # Low total material
+            (piece_types['white']['queens'] == 0 and piece_types['black']['queens'] == 0 and 
+             phase_info['major_pieces'] <= 2)):  # No queens and few major pieces
+            return 'endgame', phase_info
+        
+        # OPENING: Early moves with undeveloped pieces
+        if (move_number <= 12 and  # First 12 moves
+            (developed_pieces <= 4 or castling_rights) and  # Few developed pieces or castling available
+            piece_count >= 28):  # Most pieces still on board
+            return 'opening', phase_info
+        
+        # MIDDLEGAME: Everything else
+        return 'middlegame', phase_info
     
     def recognize_opening(self) -> str:
         """
@@ -693,3 +759,259 @@ Your move:"""
             "white_center_control": white_control,
             "black_center_control": black_control
         }
+    
+    def get_opening_prompt_template(self, color_name: str, phase_info: dict, shown_moves: list, 
+                                   failed_moves_text: str, pgn_history: str, opening_name: str,
+                                   current_fen: str, current_board_display: str, move_number: int) -> str:
+        """Generate opening-specific prompt focusing on development, center control, and king safety."""
+        
+        development_advice = ""
+        if phase_info['developed_pieces'] < 4:
+            development_advice = """
+🚀 DEVELOPMENT PRIORITIES:
+- Knights before bishops (Nf3, Nc3 for White; Nf6, Nc6 for Black)
+- Control the center with pawns (e4, d4 for White; e5, d5 for Black)
+- Castle early (within first 10-12 moves) for king safety
+- Don't move the same piece twice without good reason
+- Don't bring queen out too early (target for opponent's pieces)"""
+        
+        return f"""You are a GRANDMASTER chess player (2600+ ELO) playing as {color_name} in the OPENING phase. Your mission: rapid development, center control, and king safety.
+
+{failed_moves_text}
+=== GAME HISTORY & CONTEXT ===
+{pgn_history}
+
+=== CURRENT POSITION ===
+Opening: {opening_name}
+Position (FEN): {current_fen}
+Move #{move_number}: {color_name} to move
+
+{current_board_display}
+
+=== OPENING PHASE ANALYSIS ===
+📊 Position Statistics:
+- Pieces developed: {phase_info['developed_pieces']}/8 minor pieces
+- Material balance: {phase_info['material_balance']:+d} (positive favors White)
+- Castling available: {'Yes' if phase_info['castling_available'] else 'No'}
+- Total pieces: {phase_info['piece_count']}/32
+
+{development_advice}
+
+=== OPENING PRINCIPLES FOR THIS POSITION ===
+1. **DEVELOPMENT**: Get knights and bishops into active squares
+   - Knights: Nf3, Nc3 (White) or Nf6, Nc6 (Black) are usually best
+   - Bishops: Control long diagonals, avoid blocking your own pawns
+   
+2. **CENTER CONTROL**: Fight for e4, d4, e5, d5 squares
+   - Use pawns to claim space: e4, d4 (White) or e5, d5 (Black)
+   - Support center pawns with pieces, not more pawns
+   
+3. **KING SAFETY**: Castle within 10-12 moves
+   - Short castling (O-O) is usually safer than long castling
+   - Don't delay castling for minor advantages
+   
+4. **TACTICAL AWARENESS**: 
+   - Look for forks, pins, skewers, discovered attacks
+   - Check if opponent has any undefended pieces
+   - Ensure your pieces are protected
+
+=== YOUR LEGAL MOVES ===
+Available moves: {", ".join(shown_moves)}
+
+=== CANDIDATE MOVE EVALUATION ===
+Consider these questions for your top 3 candidate moves:
+1. Does this move develop a piece to an active square?
+2. Does this move help control the center?
+3. Does this move improve king safety or prepare castling?
+4. Does this move create any tactical threats?
+5. What is opponent's best response to this move?
+
+=== ANTI-BLUNDER CHECK ===
+Before deciding: "Am I leaving any pieces undefended? Is my king safe? Am I falling behind in development?"
+
+CRITICAL: Choose a legal move that follows opening principles!
+
+Format your response:
+MOVE: [your move in UCI format (e2e4) or algebraic notation (e4, Nf3, O-O)]
+REASONING: [75-125 words: Explain your choice based on development, center control, and king safety. Mention your top 2-3 candidate moves and why you chose this one.]
+
+Your move:"""
+
+    def get_middlegame_prompt_template(self, color_name: str, phase_info: dict, shown_moves: list,
+                                      failed_moves_text: str, pgn_history: str, opening_name: str,
+                                      current_fen: str, current_board_display: str, move_number: int) -> str:
+        """Generate middlegame-specific prompt focusing on tactics, strategy, and piece coordination."""
+        
+        tactical_themes = []
+        if phase_info['queens_on_board'] >= 2:
+            tactical_themes.append("Queen activity and safety")
+        if phase_info['major_pieces'] >= 4:
+            tactical_themes.append("Rook coordination and open files")
+        if phase_info['minor_pieces'] >= 4:
+            tactical_themes.append("Bishop pairs and knight outposts")
+            
+        return f"""You are a GRANDMASTER chess player (2600+ ELO) playing as {color_name} in the MIDDLEGAME phase. Your mission: tactical execution, strategic planning, and piece coordination.
+
+{failed_moves_text}
+=== GAME HISTORY & CONTEXT ===
+{pgn_history}
+
+=== CURRENT POSITION ===
+Opening: {opening_name}
+Position (FEN): {current_fen}
+Move #{move_number}: {color_name} to move
+
+{current_board_display}
+
+=== MIDDLEGAME PHASE ANALYSIS ===
+📊 Position Statistics:
+- Material balance: {phase_info['material_balance']:+d} (positive favors White)
+- Queens on board: {phase_info['queens_on_board']}/2
+- Major pieces (Q+R): {phase_info['major_pieces']}
+- Minor pieces (B+N): {phase_info['minor_pieces']}
+- Total pieces: {phase_info['piece_count']}/32
+
+🎯 Key Tactical Themes: {', '.join(tactical_themes) if tactical_themes else 'Piece coordination and pawn structure'}
+
+=== MIDDLEGAME STRATEGIC FRAMEWORK ===
+1. **TACTICAL AWARENESS** (Priority #1):
+   - Scan for forks, pins, skewers, discovered attacks
+   - Look for undefended pieces (hanging pieces)
+   - Check for back-rank mates and mating patterns
+   - Calculate forcing sequences (checks, captures, threats)
+
+2. **PIECE COORDINATION**:
+   - Rooks belong on open files and 7th rank
+   - Bishops need long, unblocked diagonals  
+   - Knights need outposts (protected squares in enemy territory)
+   - Queen should be active but safe from attacks
+
+3. **PAWN STRUCTURE & STRATEGY**:
+   - Create weaknesses in opponent's pawn structure
+   - Advance passed pawns with piece support
+   - Control key squares with pawns and pieces
+   - Consider pawn breaks to open lines for your pieces
+
+4. **KING SAFETY**:
+   - Keep king protected by pawns and pieces
+   - Be aware of mating threats and back-rank weakness
+   - Sometimes king becomes active in middlegame
+
+=== YOUR LEGAL MOVES ===
+Available moves: {", ".join(shown_moves)}
+
+=== MIDDLEGAME DECISION PROCESS ===
+For your top 3 candidate moves, evaluate:
+1. **TACTICS**: Does this create or defend against threats?
+2. **ACTIVITY**: Does this improve piece coordination?
+3. **STRUCTURE**: Does this improve pawn structure or create weaknesses?
+4. **KING SAFETY**: Does this maintain or improve king safety?
+5. **OPPONENT'S RESPONSE**: What's their best reply?
+
+=== CALCULATION SEQUENCE ===
+1. Identify all forcing moves (checks, captures, threats)
+2. Calculate 2-3 moves deep for tactical sequences
+3. Evaluate resulting positions for strategic factors
+4. Choose the move with best risk/reward ratio
+
+CRITICAL: In middlegame, tactics often decide the game!
+
+Format your response:
+MOVE: [your move in UCI format (e2e4) or algebraic notation (e4, Nf3, O-O)]
+REASONING: [75-125 words: Explain your choice based on tactical and strategic considerations. Mention your top 2-3 candidate moves and why you chose this one.]
+
+Your move:"""
+
+    def get_endgame_prompt_template(self, color_name: str, phase_info: dict, shown_moves: list,
+                                   failed_moves_text: str, pgn_history: str, opening_name: str,
+                                   current_fen: str, current_board_display: str, move_number: int) -> str:
+        """Generate endgame-specific prompt focusing on king activity, pawn technique, and precise calculation."""
+        
+        endgame_type = "Unknown"
+        if phase_info['piece_count'] <= 6:
+            if phase_info['major_pieces'] == 0 and phase_info['minor_pieces'] == 0:
+                endgame_type = "King and Pawn"
+            elif phase_info['queens_on_board'] == 0 and phase_info['major_pieces'] <= 2:
+                endgame_type = "Rook and Pawn" 
+            elif phase_info['major_pieces'] == 0:
+                endgame_type = "Minor Piece"
+        
+        king_activity_advice = """
+👑 KING ACTIVITY IS CRUCIAL:
+- In endgame, the king becomes a powerful piece
+- Centralize your king to control key squares
+- Use king to support pawn advances
+- King and pawn vs king requires precise technique"""
+
+        return f"""You are a GRANDMASTER chess player (2600+ ELO) playing as {color_name} in the ENDGAME phase. Your mission: precise calculation, king activity, and pawn technique.
+
+{failed_moves_text}
+=== GAME HISTORY & CONTEXT ===
+{pgn_history}
+
+=== CURRENT POSITION ===
+Endgame Type: {endgame_type}
+Position (FEN): {current_fen}
+Move #{move_number}: {color_name} to move
+
+{current_board_display}
+
+=== ENDGAME PHASE ANALYSIS ===
+📊 Position Statistics:
+- Material balance: {phase_info['material_balance']:+d} (positive favors White)
+- Total pieces remaining: {phase_info['piece_count']}/32
+- Queens: {phase_info['queens_on_board']}, Rooks: {phase_info['major_pieces'] - phase_info['queens_on_board']}
+- Bishops + Knights: {phase_info['minor_pieces']}
+- Pawns: {phase_info['piece_breakdown']['white']['pawns'] + phase_info['piece_breakdown']['black']['pawns']}
+
+{king_activity_advice}
+
+=== ENDGAME PRINCIPLES FOR THIS POSITION ===
+1. **KING ACTIVITY** (Most Important):
+   - Centralize king to control key squares
+   - Use king to attack enemy pawns
+   - Support your own pawn advances with king
+   - Opposition: keep odd number of squares between kings
+
+2. **PAWN TECHNIQUE**:
+   - Create passed pawns (pawns with no enemy pawns blocking them)
+   - Advance passed pawns with king support
+   - Use pawn breaks to create weaknesses
+   - Know basic pawn endings: opposition, triangulation, breakthrough
+
+3. **PIECE COORDINATION**:
+   - Rooks belong behind passed pawns (yours or opponent's)
+   - Rooks on 7th rank can be very powerful
+   - Minor pieces should blockade enemy passed pawns
+   - Coordinate pieces with king for maximum effect
+
+4. **PRECISE CALCULATION**:
+   - Calculate pawn races accurately
+   - Count tempi (moves) for pawn promotion
+   - Look for zugzwang (positions where moving hurts)
+   - Every move matters - no time for vague plans
+
+=== YOUR LEGAL MOVES ===
+Available moves: {", ".join(shown_moves)}
+
+=== ENDGAME EVALUATION CRITERIA ===
+For each candidate move, calculate:
+1. **KING IMPROVEMENT**: Does this centralize/activate king?
+2. **PAWN PROGRESS**: Does this advance or support passed pawns?
+3. **OPPOSITION**: Does this maintain/gain opposition?
+4. **TEMPO**: Does this gain or lose crucial time?
+5. **CONCRETE RESULT**: Can you calculate to a clear win/draw?
+
+=== CALCULATION REQUIREMENTS ===
+- Calculate at least 3-4 moves deep
+- Count moves to pawn promotion for both sides
+- Look for tactical shots (even in simple positions)
+- Verify your evaluation with concrete variations
+
+CRITICAL: Endgames require precise calculation - every tempo counts!
+
+Format your response:
+MOVE: [your move in UCI format (e2e4) or algebraic notation (e4, Nf3, O-O)]
+REASONING: [75-125 words: Explain your choice based on king activity, pawn technique, and concrete calculation. Mention your top 2-3 candidate moves and why you chose this one.]
+
+Your move:"""
