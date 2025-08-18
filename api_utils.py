@@ -57,6 +57,10 @@ def call_grok(prompt: str, api_key: str, model: str = "grok-beta") -> Optional[s
     
     for attempt in range(MAX_RETRIES):
         try:
+            # Add small delay to prevent rate limiting
+            if attempt > 0:
+                time.sleep(1)  # 1 second delay between retries
+                
             print(f"DEBUG: Sending request to {GROK_ENDPOINT}")
             print(f"DEBUG: Payload: {payload}")
             
@@ -72,9 +76,40 @@ def call_grok(prompt: str, api_key: str, model: str = "grok-beta") -> Optional[s
             
             response.raise_for_status()
             
-            data = response.json()
+            # Check for empty response body
+            response_text = response.text
+            print(f"DEBUG: API response length: {len(response_text)}")
+            if len(response_text) > 0:
+                print(f"DEBUG: First 100 chars of response: {response_text[:100]}")
+            
+            if not response_text or len(response_text) == 0:
+                print(f"WARNING: Empty response body from Grok API (attempt {attempt + 1}/{MAX_RETRIES})")
+                if attempt < MAX_RETRIES - 1:
+                    print("Retrying with exponential backoff...")
+                    exponential_backoff(attempt)
+                    continue
+                else:
+                    print("ERROR: All attempts returned empty responses")
+                    return None
+            
+            try:
+                data = response.json()
+            except ValueError as json_error:
+                print(f"ERROR: Invalid JSON response: {json_error}")
+                print(f"Response text: {response_text[:200]}...")
+                return None
+            
             if 'choices' in data and len(data['choices']) > 0:
-                return data['choices'][0]['message']['content']
+                content = data['choices'][0]['message']['content']
+                if content and content.strip():
+                    return content
+                else:
+                    print(f"WARNING: Empty content in API response (attempt {attempt + 1}/{MAX_RETRIES})")
+                    if attempt < MAX_RETRIES - 1:
+                        exponential_backoff(attempt)
+                        continue
+                    else:
+                        return None
             else:
                 print(f"Unexpected Grok API response format: {data}")
                 return None

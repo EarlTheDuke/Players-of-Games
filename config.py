@@ -28,7 +28,7 @@ except Exception as e:
     CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
 
 # Model names - Updated for current API versions
-GROK_MODEL = "grok-4-0709"  # Correct Grok 4 model name from xAI API docs
+GROK_MODEL = "grok-2-1212"  # More stable than grok-4-0709 which seems to have empty response issues
 CLAUDE_MODEL = "claude-3-5-sonnet-20241022"
 
 # API Endpoints
