@@ -258,37 +258,8 @@ def main():
                     "error": str(e)
                 }, e)
         
-        # Auto Play Logic - Continue making moves if auto play is enabled
-        if st.session_state.get('auto_play', False):
-            if game.is_game_over():
-                # Game is over, turn off auto play
-                st.session_state.auto_play = False
-                st.success("🏁 Game Over! Auto Play has been stopped.")
-            else:
-                # Show auto play status
-                st.info("🤖 Auto Play is ON - Making moves automatically...")
-                
-                # Use a timer-based approach to control move speed
-                import time
-                
-                # Initialize auto play timer if not exists
-                if 'auto_play_timer' not in st.session_state:
-                    st.session_state.auto_play_timer = time.time()
-                
-                # Check if enough time has passed (2 seconds between moves for good viewing)
-                current_time = time.time()
-                if current_time - st.session_state.auto_play_timer >= 2.0:
-                    st.session_state.make_move = True
-                    st.session_state.auto_play_timer = current_time
-                    st.rerun()
-                else:
-                    # Show countdown and trigger auto-refresh
-                    remaining = 2.0 - (current_time - st.session_state.auto_play_timer)
-                    st.write(f"⏱️ Next move in {remaining:.1f} seconds...")
-                    # Use Streamlit's built-in auto-refresh
-                    st.rerun()
-        
-        # Display board
+        # Display board FIRST so user can see current position
+        # Then handle auto play logic after board is rendered
         try:
             # Create proper player mapping for the renderer (it expects 'white' and 'black' keys)
             player_names = {
@@ -447,6 +418,38 @@ def main():
             st.error(f"Game log error: {e}")
             st.text("Moves will appear here when the game starts")
             log_error("Game log display error", ErrorCategory.UI_ERROR, {"error": str(e)}, e)
+    
+    # Auto Play Logic - AFTER board display so user can see each position
+    if 'game' in st.session_state:
+        game = st.session_state.game
+        if st.session_state.get('auto_play', False):
+            if game.is_game_over():
+                # Game is over, turn off auto play
+                st.session_state.auto_play = False
+                st.success("🏁 Game Over! Auto Play has been stopped.")
+            else:
+                # Show auto play status
+                st.info("🤖 Auto Play is ON - Making moves automatically...")
+                
+                # Use a timer-based approach to control move speed
+                import time
+                
+                # Initialize auto play timer if not exists
+                if 'auto_play_timer' not in st.session_state:
+                    st.session_state.auto_play_timer = time.time()
+                
+                # Check if enough time has passed (2 seconds between moves for good viewing)
+                current_time = time.time()
+                if current_time - st.session_state.auto_play_timer >= 2.0:
+                    st.session_state.make_move = True
+                    st.session_state.auto_play_timer = current_time
+                    st.rerun()
+                else:
+                    # Show countdown and trigger auto-refresh
+                    remaining = 2.0 - (current_time - st.session_state.auto_play_timer)
+                    st.write(f"⏱️ Next move in {remaining:.1f} seconds...")
+                    # Use Streamlit's built-in auto-refresh
+                    st.rerun()
     
     # Error Log Viewer
     st.sidebar.subheader("🐛 Error & Bug Log")
