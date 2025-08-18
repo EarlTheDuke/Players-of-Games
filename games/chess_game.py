@@ -775,7 +775,8 @@ class ChessGame(BaseGame):
 - Don't move the same piece twice without good reason
 - Don't bring queen out too early (target for opponent's pieces)"""
         
-        return f"""You are a GRANDMASTER chess player (2600+ ELO) playing as {color_name} in the OPENING phase. Your mission: rapid development, center control, and king safety.
+        return f"""🚀 PHASE-AWARE AI SYSTEM ACTIVE 🚀
+You are a GRANDMASTER chess player (2600+ ELO) playing as {color_name} in the OPENING phase. Your mission: rapid development, center control, and king safety.
 
 {failed_moves_text}
 === GAME HISTORY & CONTEXT ===
@@ -850,7 +851,8 @@ Your move:"""
         if phase_info['minor_pieces'] >= 4:
             tactical_themes.append("Bishop pairs and knight outposts")
             
-        return f"""You are a GRANDMASTER chess player (2600+ ELO) playing as {color_name} in the MIDDLEGAME phase. Your mission: tactical execution, strategic planning, and piece coordination.
+        return f"""⚔️  PHASE-AWARE AI SYSTEM ACTIVE ⚔️ 
+You are a GRANDMASTER chess player (2600+ ELO) playing as {color_name} in the MIDDLEGAME phase. Your mission: tactical execution, strategic planning, and piece coordination.
 
 {failed_moves_text}
 === GAME HISTORY & CONTEXT ===
@@ -943,7 +945,8 @@ Your move:"""
 - Use king to support pawn advances
 - King and pawn vs king requires precise technique"""
 
-        return f"""You are a GRANDMASTER chess player (2600+ ELO) playing as {color_name} in the ENDGAME phase. Your mission: precise calculation, king activity, and pawn technique.
+        return f"""👑 PHASE-AWARE AI SYSTEM ACTIVE 👑
+You are a GRANDMASTER chess player (2600+ ELO) playing as {color_name} in the ENDGAME phase. Your mission: precise calculation, king activity, and pawn technique.
 
 {failed_moves_text}
 === GAME HISTORY & CONTEXT ===

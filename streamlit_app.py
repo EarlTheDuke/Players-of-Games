@@ -204,6 +204,13 @@ def main():
                     
                     # Show debug output if we have it
                     if debug_text.strip():
+                        # Add clear debug output button
+                        col1, col2 = st.columns([3, 1])
+                        with col2:
+                            if st.button("🗑️ Clear Debug Output", help="Clear all debug output to start fresh testing"):
+                                st.session_state.debug_outputs = []
+                                st.rerun()
+                        
                         with st.expander("🔍 Debug Output (Move Validation Details)", expanded=not success):
                             # Show debug output in a text area for easy copying
                             st.text_area(
@@ -464,6 +471,11 @@ def main():
     
     # Debug output viewer - Always expanded for easy access
     with st.sidebar.expander("🔍 Debug Output (Copy/Paste Here)", expanded=True):
+        # Add clear button at the top
+        if st.button("🗑️ Clear All Debug Output", help="Clear all debug output for fresh testing", key="sidebar_clear_debug"):
+            st.session_state.debug_outputs = []
+            st.rerun()
+            
         try:
             # Get debug outputs from session state
             debug_outputs = st.session_state.get('debug_outputs', [])
