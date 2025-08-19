@@ -473,7 +473,7 @@ class ChessGame(BaseGame):
             
         return None
 
-    def _evaluate_material(self, board: chess.Board) -> int:
+    def _evaluate_material(self, board: chess.Board, perspective: Optional[bool] = None) -> int:
         piece_values = {
             chess.PAWN: 1,
             chess.KNIGHT: 3,
@@ -482,12 +482,14 @@ class ChessGame(BaseGame):
             chess.QUEEN: 9,
         }
         score = 0
+        if perspective is None:
+            perspective = self.board.turn
         for sq in chess.SQUARES:
             p = board.piece_at(sq)
             if not p:
                 continue
             val = piece_values.get(p.piece_type, 0)
-            score += val if p.color == self.board.turn else -val
+            score += val if p.color == perspective else -val
         return score
 
     def _compute_tactical_density(self) -> int:
@@ -514,7 +516,8 @@ class ChessGame(BaseGame):
     def _would_be_gross_blunder(self, move: chess.Move) -> bool:
         # Phase/tactical-aware threshold (adjust if side is already behind)
         threshold = self._blunder_threshold()
-        baseline = self._evaluate_material(self.board)
+        perspective = self.board.turn
+        baseline = self._evaluate_material(self.board, perspective)
         if baseline < -2:
             # If already worse materially, allow more risk-taking
             threshold += 1
@@ -549,17 +552,17 @@ class ChessGame(BaseGame):
             qsq = None
             for sq in chess.SQUARES:
                 p = temp.piece_at(sq)
-                if p and p.piece_type == chess.QUEEN and p.color == self.board.turn:
+                if p and p.piece_type == chess.QUEEN and p.color == perspective:
                     qsq = sq
                     break
             if qsq is not None:
-                opp_attackers = list(temp.attackers(not self.board.turn, qsq))
+                opp_attackers = list(temp.attackers(not perspective, qsq))
                 if opp_attackers:
                     # Take queen and evaluate delta
                     cap_move = chess.Move(opp_attackers[0], qsq)
                     if cap_move in temp.legal_moves:
                         temp.push(cap_move)
-                        delta_q = baseline - self._evaluate_material(temp)
+                        delta_q = baseline - self._evaluate_material(temp, perspective)
                         queen_sac = delta_q >= 7
                         temp.pop()
         except Exception:
@@ -652,14 +655,15 @@ class ChessGame(BaseGame):
                 pass
             temp = self.board.copy()
             temp.push(mv)
-            baseline = self._evaluate_material(self.board)
+            perspective = self.board.turn
+            baseline = self._evaluate_material(self.board, perspective)
             replies = list(temp.legal_moves)
             forcing = [m for m in replies if temp.is_capture(m)]
             replies = forcing + [m for m in replies if m not in forcing]
             worst = 0
             for opp in replies[:10]:
                 temp.push(opp)
-                delta = baseline - self._evaluate_material(temp)
+                delta = baseline - self._evaluate_material(temp, perspective)
                 if delta > worst:
                     worst = delta
                 temp.pop()
