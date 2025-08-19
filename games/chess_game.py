@@ -988,6 +988,11 @@ Move #{move_number}: {color_name} to move
    - Check if opponent has any undefended pieces
    - Ensure your pieces are protected
 
+**=== PIECE VALUES & TRADE EVALUATION ===
+Standard values: Pawn=1, Knight/Bishop=3, Rook=5, Queen=9, King=infinite (prioritize safety).
+- For any potential capture/trade: Calculate net material (your captured value - opponent's). Only trade if net >=0 (e.g., no rook for pawn) or positional compensation (e.g., opens center, attacks king).
+- Avoid aggressive trades early; prioritize development over material grabs unless free.**
+
 === YOUR LEGAL MOVES ===
 Available moves: {", ".join(shown_moves)}
 
@@ -1070,6 +1075,11 @@ Move #{move_number}: {color_name} to move
    - Keep king protected by pawns and pieces
    - Be aware of mating threats and back-rank weakness
    - Sometimes king becomes active in middlegame
+
+**=== PIECE VALUES & TRADE EVALUATION ===
+Standard values: Pawn=1, Knight/Bishop=3, Rook=5, Queen=9, King=infinite.
+- Before any trade/capture: Compute net material (opponent's value - yours if recaptured). Favor trades only if net >0 (e.g., bishop for pawn bad) or compensation (e.g., weakens king, opens file).
+- Avoid aggressive unequal trades; calculate 2-3 moves ahead for recaptures.**
 
 === YOUR LEGAL MOVES ===
 Available moves: {", ".join(shown_moves)}
@@ -1165,6 +1175,11 @@ Move #{move_number}: {color_name} to move
    - Count tempi (moves) for pawn promotion
    - Look for zugzwang (positions where moving hurts)
    - Every move matters - no time for vague plans
+
+**=== PIECE VALUES & TRADE EVALUATION ===
+Standard values: Pawn=1 (add +1-3 if passed/near promotion), Knight/Bishop=3, Rook=5, Queen=9, King=infinite.
+- For trades/captures: Calculate net material, factoring pawn potential. Avoid down-trades (e.g., rook for pawn) unless it creates a winning passer.
+- Attack Safety: Ensure moves to new squares are protected; count king as extra defender in endgames.**
 
 === YOUR LEGAL MOVES ===
 Available moves: {", ".join(shown_moves)}
