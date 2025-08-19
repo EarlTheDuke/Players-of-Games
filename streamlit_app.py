@@ -170,8 +170,9 @@ def main():
             st.session_state.debug_outputs.append(debug_entry)
             
             try:
+                actor = game.current_player
                 log_info("Making AI move", ErrorCategory.GAME_LOGIC, {
-                    "current_player": game.current_player,
+                    "current_player": actor,
                     "move_count": game.move_count,
                     "board_fen": game.board.fen()
                 })
@@ -196,7 +197,7 @@ def main():
                     
                     debug_entry = {
                         "timestamp": timestamp,
-                        "player": game.current_player,
+                        "player": actor,
                         "move_count": game.move_count,
                         "success": success,
                         "debug_output": debug_text if debug_text.strip() else f"No debug output captured for move attempt (success: {success})"

@@ -177,18 +177,12 @@ class ChessGame(BaseGame):
         current_color = self._get_current_player_color()
         color_name = "White" if current_color == chess.WHITE else "Black"
         
-        # Verify player turn matches board turn
+        # Log player and board turn, but do NOT auto-switch here
         board_turn = "White" if self.board.turn == chess.WHITE else "Black"
         print(f"DEBUG: Player {self.current_player} ({color_name}) requesting move")
         print(f"DEBUG: Board expects {board_turn} to move")
-        
         if color_name != board_turn:
-            print(f"ERROR: Turn mismatch! Player is {color_name} but board expects {board_turn}")
-            # Try to sync by switching the current player
-            self.next_player()
-            current_color = self._get_current_player_color()
-            color_name = "White" if current_color == chess.WHITE else "Black"
-            print(f"DEBUG: Switched to player {self.current_player} ({color_name})")
+            print(f"WARNING: Turn mismatch detected (player vs board). Will rely on reconcile_turn() before move.")
         
         legal_moves = self.get_legal_actions()
         
@@ -308,6 +302,20 @@ class ChessGame(BaseGame):
             pass
         
         return enhanced_prompt
+
+    def reconcile_turn(self) -> None:
+        """Ensure current_player matches board.turn. Do not modify board; only sync current_player_index."""
+        try:
+            board_color = chess.WHITE if self.board.turn == chess.WHITE else chess.BLACK
+            # Identify which player has this color
+            for idx, name in enumerate(self.player_list):
+                if self.player_colors.get(name) == board_color:
+                    if self.current_player_index != idx:
+                        print(f"DEBUG: Reconciling turn: switching current player from {self.current_player} to {name}")
+                        self.current_player_index = idx
+                    break
+        except Exception as e:
+            print(f"DEBUG: reconcile_turn failed: {e}")
     
     def parse_action_from_response(self, response: str) -> Optional[str]:
         """Parse a UCI move from the AI's response with extensive debugging."""

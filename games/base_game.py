@@ -183,6 +183,12 @@ class BaseGame(ABC):
         Returns:
             True if move was successful, False if game should end
         """
+        # Reconcile turn with underlying game state if subclass supports it
+        try:
+            if hasattr(self, 'reconcile_turn') and callable(getattr(self, 'reconcile_turn')):
+                self.reconcile_turn()
+        except Exception:
+            pass
         player_name = self.current_player
         # Allow subclass to adjust attempts dynamically (e.g., deeper in endgames)
         max_attempts = 3
