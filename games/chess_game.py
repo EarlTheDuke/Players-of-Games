@@ -1092,23 +1092,56 @@ Move #{move_number}: {color_name} to move
 
 {development_advice}
 
-=== OPENING PRINCIPLES FOR THIS POSITION ===
-1. **DEVELOPMENT**: Get knights and bishops into active squares
-   - Knights: Nf3, Nc3 (White) or Nf6, Nc6 (Black) are usually best
-   - Bishops: Control long diagonals, avoid blocking your own pawns
-   
-2. **CENTER CONTROL**: Fight for e4, d4, e5, d5 squares
-   - Use pawns to claim space: e4, d4 (White) or e5, d5 (Black)
-   - Support center pawns with pieces, not more pawns
-   
-3. **KING SAFETY**: Castle within 10-12 moves
-   - Short castling (O-O) is usually safer than long castling
-   - Don't delay castling for minor advantages
-   
-4. **TACTICAL AWARENESS**: 
-   - Look for forks, pins, skewers, discovered attacks
-   - Check if opponent has any undefended pieces
-   - Ensure your pieces are protected
+=== MIDDLEGAME PRINCIPLES FOR THIS POSITION ===
+
+DEVELOP YOUR QUEEN:
+
+Bring your queen into the game early but safely—use it to support attacks or control key squares, avoiding exposure to threats.
+
+
+TO TAKE IS A MISTAKE:
+
+Don't automatically capture if it weakens your position; evaluate if the recapture helps your opponent (e.g., opening files for their rooks).
+
+
+ACTIVATE YOUR ROOKS:
+
+Get rooks on open files or the 7th rank to pressure the opponent; double them if possible for maximum power.
+
+
+BREAK OPEN YOUR OPPONENT’S CASTLING:
+
+Use pawn advances or sacrifices to shatter their kingside pawns, exposing the king to attacks.
+
+
+OPEN A POSITION BY TRADING PAWNS:
+
+Exchange central pawns to create open lines for your pieces, especially if you have better development.
+
+
+ATTACKERS NEED TO OUTNUMBER DEFENDERS:
+
+When launching an attack on a square or piece, ensure you have more pieces targeting it than they have defending.
+
+
+TAKE A VICTORY LAP (LEAST ACTIVE PIECE):
+
+Improve your worst-placed piece first—activate it to contribute to the fight (LAP = Least Active Piece).
+
+
+NEUTRALIZE YOUR OPPONENT’S PIECES ON YOUR TERRITORY:
+
+Trade or drive away enemy pieces that have invaded your side, regaining control of your position.
+
+
+IF YOU FOUND A BRILLIANT MOVE, THINK TWICE:
+
+Double-check flashy tactics; they might be traps or overlook counterplay—calculate deeper.
+
+
+USE FORCING MOVES: CHECKS, CAPTURES, AND ATTACKING MOVES:
+
+Prioritize moves that force responses (checks, captures, threats) to dictate the game's pace and create opportunities.
 
 **=== PIECE VALUES & TRADE EVALUATION ===
 Standard values: Pawn=1, Knight/Bishop=3, Rook=5, Queen=9, King=infinite (prioritize safety).
