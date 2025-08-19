@@ -1211,29 +1211,36 @@ Move #{move_number}: {color_name} to move
 
 🎯 Key Tactical Themes: {', '.join(tactical_themes) if tactical_themes else 'Piece coordination and pawn structure'}
 
-=== MIDDLEGAME STRATEGIC FRAMEWORK ===
-1. **TACTICAL AWARENESS** (Priority #1):
-   - Scan for forks, pins, skewers, discovered attacks
-   - Look for undefended pieces (hanging pieces)
-   - Check for back-rank mates and mating patterns
-   - Calculate forcing sequences (checks, captures, threats)
+=== MIDDLEGAME PRINCIPLES FOR THIS POSITION ===
+1. **DEVELOP YOUR QUEEN**:
+   - Bring your queen into the game early but safely—use it to support attacks or control key squares, avoiding exposure to threats.
 
-2. **PIECE COORDINATION**:
-   - Rooks belong on open files and 7th rank
-   - Bishops need long, unblocked diagonals  
-   - Knights need outposts (protected squares in enemy territory)
-   - Queen should be active but safe from attacks
+2. **TO TAKE IS A MISTAKE**:
+   - Don't automatically capture if it weakens your position; evaluate if the recapture helps your opponent (e.g., opening files for their rooks).
 
-3. **PAWN STRUCTURE & STRATEGY**:
-   - Create weaknesses in opponent's pawn structure
-   - Advance passed pawns with piece support
-   - Control key squares with pawns and pieces
-   - Consider pawn breaks to open lines for your pieces
+3. **ACTIVATE YOUR ROOKS**:
+   - Get rooks on open files or the 7th rank to pressure the opponent; double them if possible for maximum power.
 
-4. **KING SAFETY**:
-   - Keep king protected by pawns and pieces
-   - Be aware of mating threats and back-rank weakness
-   - Sometimes king becomes active in middlegame
+4. **BREAK OPEN YOUR OPPONENT’S CASTLING**:
+   - Use pawn advances or sacrifices to shatter their kingside pawns, exposing the king to attacks.
+
+5. **OPEN A POSITION BY TRADING PAWNS**:
+   - Exchange central pawns to create open lines for your pieces, especially if you have better development.
+
+6. **ATTACKERS NEED TO OUTNUMBER DEFENDERS**:
+   - When launching an attack on a square or piece, ensure you have more pieces targeting it than they have defending.
+
+7. **TAKE A VICTORY LAP (LEAST ACTIVE PIECE)**:
+   - Improve your worst-placed piece first—activate it to contribute to the fight (LAP = Least Active Piece).
+
+8. **NEUTRALIZE YOUR OPPONENT’S PIECES ON YOUR TERRITORY**:
+   - Trade or drive away enemy pieces that have invaded your side, regaining control of your position.
+
+9. **IF YOU FOUND A BRILLIANT MOVE, THINK TWICE**:
+   - Double-check flashy tactics; they might be traps or overlook counterplay—calculate deeper.
+
+10. **USE FORCING MOVES: CHECKS, CAPTURES, AND ATTACKING MOVES**:
+    - Prioritize moves that force responses (checks, captures, threats) to dictate the game's pace and create opportunities.
 
 **=== PIECE VALUES & TRADE EVALUATION ===
 Standard values: Pawn=1, Knight/Bishop=3, Rook=5, Queen=9, King=infinite.
