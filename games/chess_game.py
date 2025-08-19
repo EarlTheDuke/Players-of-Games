@@ -519,6 +519,7 @@ class ChessGame(BaseGame):
             # If already worse materially, allow more risk-taking
             threshold += 1
         temp = self.board.copy()
+        hanging_before = self._get_hanging_squares_for_current()
         temp.push(move)
         worst_drop = 0
         # Prioritize forcing replies first
@@ -530,6 +531,17 @@ class ChessGame(BaseGame):
             delta = baseline - self._evaluate_material(temp)
             worst_drop = max(worst_drop, delta)
             temp.pop()
+        # If the move evacuates a hanging piece to safety, be more permissive
+        try:
+            if move.from_square in hanging_before:
+                new_sq = move.to_square
+                attackers_new = len(temp.attackers(not self.board.turn, new_sq))
+                defenders_new = len(temp.attackers(self.board.turn, new_sq))
+                if attackers_new <= defenders_new:
+                    threshold += 1
+        except Exception:
+            pass
+
         # Explicit queen-sac hard rule: if queen is captured next move without compensation, veto
         queen_sac = False
         try:
@@ -576,6 +588,17 @@ class ChessGame(BaseGame):
                     hanging.append(f"{piece.symbol()} on {chess.square_name(sq)} (attacked {attackers}, defended {defenders})")
         return hanging
 
+    def _get_hanging_squares_for_current(self) -> List[int]:
+        squares: List[int] = []
+        for sq in chess.SQUARES:
+            piece = self.board.piece_at(sq)
+            if piece and piece.color == self.board.turn:
+                attackers = len(self.board.attackers(not self.board.turn, sq))
+                defenders = len(self.board.attackers(self.board.turn, sq))
+                if attackers > defenders:
+                    squares.append(sq)
+        return squares
+
     def _find_protected_attacks(self) -> List[str]:
         traps: List[str] = []
         # Look for opponent pieces attacked that are insufficiently defended
@@ -619,6 +642,7 @@ class ChessGame(BaseGame):
         if not legal:
             return ""
         candidates: list[tuple[float, chess.Move]] = []
+        hanging_before = self._get_hanging_squares_for_current()
         for mv in legal:
             try:
                 uci = mv.uci()
@@ -639,7 +663,18 @@ class ChessGame(BaseGame):
                 if delta > worst:
                     worst = delta
                 temp.pop()
-            candidates.append((-worst, mv))  # higher is better (less worst-case loss)
+            # Bonus if move evacuates a hanging piece to safety
+            bonus = 0.0
+            try:
+                if mv.from_square in hanging_before:
+                    new_sq = mv.to_square
+                    attackers_new = len(temp.attackers(not self.board.turn, new_sq))
+                    defenders_new = len(temp.attackers(self.board.turn, new_sq))
+                    if attackers_new <= defenders_new:
+                        bonus += 0.5
+            except Exception:
+                pass
+            candidates.append((-(worst - bonus), mv))  # higher is better (less worst-case loss)
         if not candidates:
             # fallback to any legal move if all vetoed
             return legal[0].uci()
