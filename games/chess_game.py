@@ -531,7 +531,7 @@ class ChessGame(BaseGame):
         replies = forcing + [m for m in replies if m not in forcing]
         for idx, opp_move in enumerate(replies[:12]):
             temp.push(opp_move)
-            delta = baseline - self._evaluate_material(temp)
+            delta = baseline - self._evaluate_material(temp, perspective)
             worst_drop = max(worst_drop, delta)
             temp.pop()
         # If the move evacuates a hanging piece to safety, be more permissive
@@ -682,8 +682,9 @@ class ChessGame(BaseGame):
         if not candidates:
             # fallback to any legal move if all vetoed
             return legal[0].uci()
-        candidates.sort()
-        return candidates[0][1].uci()
+        # Select the candidate with the highest score (best worst-case outcome)
+        best = max(candidates, key=lambda x: x[0])
+        return best[1].uci()
     
     def get_pgn_history(self, include_headers: bool = True, max_moves: Optional[int] = None) -> str:
         """
@@ -1249,26 +1250,6 @@ Standard values: Pawn=1, Knight/Bishop=3, Rook=5, Queen=9, King=infinite.
 
 === YOUR LEGAL MOVES ===
 Available moves: {", ".join(shown_moves)}
-
-=== MIDDLEGAME DECISION PROCESS ===
-For your top 3 candidate moves, evaluate:
-1. **TACTICS**: Does this create or defend against threats?
-2. **ACTIVITY**: Does this improve piece coordination?
-3. **STRUCTURE**: Does this improve pawn structure or create weaknesses?
-4. **KING SAFETY**: Does this maintain or improve king safety?
-5. **OPPONENT'S RESPONSE**: What's their best reply?
-
-=== CALCULATION SEQUENCE ===
-1. Identify all forcing moves (checks, captures, threats)
-2. Calculate 2-3 moves deep for tactical sequences
-3. Evaluate resulting positions for strategic factors
-4. Choose the move with best risk/reward ratio
-
-CRITICAL: In middlegame, tactics often decide the game!
-
-Format your response:
-MOVE: [your move in UCI format (e2e4) or algebraic notation (e4, Nf3, O-O)]
-REASONING: [75-125 words: Explain your choice based on tactical and strategic considerations. Mention your top 2-3 candidate moves and why you chose this one.]
 
 Your move:"""
 
