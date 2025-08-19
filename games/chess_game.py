@@ -37,6 +37,8 @@ class ChessGame(BaseGame):
         self.moves_san = []
         # Cache threats for prompt injection
         self._cached_threats_text: Optional[str] = None
+        # Per-turn veto tracking to avoid repetition loops
+        self._vetoed_moves_this_turn: dict[str, int] = {}
     
     def get_game_name(self) -> str:
         """Return the name of the game."""
@@ -152,6 +154,9 @@ class ChessGame(BaseGame):
                         self._last_failure_reason[self.current_player] = "Previous attempt likely blundered material (>threshold)"
                         # Mark to skip tracking as failed repetition; this is a veto, not illegal
                         setattr(self, '_skip_track_failed', True)
+                        # Track per-turn veto count
+                        uci = move.uci()
+                        self._vetoed_moves_this_turn[uci] = self._vetoed_moves_this_turn.get(uci, 0) + 1
                     except Exception:
                         pass
                     return False
@@ -318,6 +323,13 @@ class ChessGame(BaseGame):
                     break
         except Exception as e:
             print(f"DEBUG: reconcile_turn failed: {e}")
+    
+    def start_turn_setup(self) -> None:
+        """Reset per-turn state before prompting the model."""
+        try:
+            self._vetoed_moves_this_turn = {}
+        except Exception:
+            pass
     
     def parse_action_from_response(self, response: str) -> Optional[str]:
         """Parse a UCI move from the AI's response with extensive debugging."""
@@ -506,7 +518,29 @@ class ChessGame(BaseGame):
             delta = baseline - self._evaluate_material(temp)
             worst_drop = max(worst_drop, delta)
             temp.pop()
-        return worst_drop >= threshold
+        # Explicit queen-sac hard rule: if queen is captured next move without compensation, veto
+        queen_sac = False
+        try:
+            # If our queen is en prise after our move and can be taken immediately with net <= -7
+            qsq = None
+            for sq in chess.SQUARES:
+                p = temp.piece_at(sq)
+                if p and p.piece_type == chess.QUEEN and p.color == self.board.turn:
+                    qsq = sq
+                    break
+            if qsq is not None:
+                opp_attackers = list(temp.attackers(not self.board.turn, qsq))
+                if opp_attackers:
+                    # Take queen and evaluate delta
+                    cap_move = chess.Move(opp_attackers[0], qsq)
+                    if cap_move in temp.legal_moves:
+                        temp.push(cap_move)
+                        delta_q = baseline - self._evaluate_material(temp)
+                        queen_sac = delta_q >= 7
+                        temp.pop()
+        except Exception:
+            pass
+        return queen_sac or (worst_drop >= threshold)
 
     def _get_checking_pieces(self) -> List[str]:
         if not self.board.is_check():
@@ -568,33 +602,37 @@ class ChessGame(BaseGame):
         return 5 if phase == 'endgame' else 3
 
     def get_safe_fallback_action(self) -> str:
-        # Choose legal move that avoids check and minimizes immediate capture exposure
-        best_move = None
-        best_score = -10**9
-        for mv in list(self.board.legal_moves):
-            score = 0
-            # Prefer moves that resolve check
-            if self.board.is_check():
-                temp = self.board.copy()
-                temp.push(mv)
-                if not temp.is_check():
-                    score += 100
-            # Penalize moves that hang material
-            temp2 = self.board.copy()
-            temp2.push(mv)
-            attackers = 0
-            piece_sq = mv.to_square
-            if temp2.piece_at(piece_sq):
-                attackers = len(temp2.attackers(not self.board.turn, piece_sq))
-                defenders = len(temp2.attackers(self.board.turn, piece_sq))
-                score -= max(0, attackers - defenders)
-            # Small bonus for captures
-            if self.board.is_capture(mv):
-                score += 1
-            if score > best_score:
-                best_score = score
-                best_move = mv
-        return best_move.uci() if best_move else list(self.board.legal_moves)[0].uci()
+        # Rank legal moves by worst-case eval vs forcing replies; skip per-turn vetoed moves
+        legal = list(self.board.legal_moves)
+        if not legal:
+            return ""
+        candidates: list[tuple[float, chess.Move]] = []
+        for mv in legal:
+            try:
+                uci = mv.uci()
+                if self._vetoed_moves_this_turn.get(uci, 0) >= 1:
+                    continue
+            except Exception:
+                pass
+            temp = self.board.copy()
+            temp.push(mv)
+            baseline = self._evaluate_material(self.board)
+            replies = list(temp.legal_moves)
+            forcing = [m for m in replies if temp.is_capture(m)]
+            replies = forcing + [m for m in replies if m not in forcing]
+            worst = 0
+            for opp in replies[:10]:
+                temp.push(opp)
+                delta = baseline - self._evaluate_material(temp)
+                if delta > worst:
+                    worst = delta
+                temp.pop()
+            candidates.append((-worst, mv))  # higher is better (less worst-case loss)
+        if not candidates:
+            # fallback to any legal move if all vetoed
+            return legal[0].uci()
+        candidates.sort()
+        return candidates[0][1].uci()
     
     def get_pgn_history(self, include_headers: bool = True, max_moves: Optional[int] = None) -> str:
         """

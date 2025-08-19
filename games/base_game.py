@@ -189,6 +189,12 @@ class BaseGame(ABC):
                 self.reconcile_turn()
         except Exception:
             pass
+        # Start-of-turn setup hook (e.g., clear per-turn veto memory)
+        try:
+            if hasattr(self, 'start_turn_setup') and callable(getattr(self, 'start_turn_setup')):
+                self.start_turn_setup()
+        except Exception:
+            pass
         player_name = self.current_player
         # Allow subclass to adjust attempts dynamically (e.g., deeper in endgames)
         max_attempts = 3
