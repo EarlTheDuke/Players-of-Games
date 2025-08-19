@@ -243,6 +243,15 @@ class ChessGame(BaseGame):
                 previous_feedback_text = f"Previous attempt failed because: {last_reason}. Choose differently.\n\n"
         except Exception:
             previous_feedback_text = ""
+        # Include per-turn vetoed moves (to avoid repeated blunders)
+        veto_text = ""
+        try:
+            if getattr(self, '_vetoed_moves_this_turn', None):
+                veto_list = [f"{mv} (vetoed {cnt}x)" for mv, cnt in self._vetoed_moves_this_turn.items() if cnt >= 1]
+                if veto_list:
+                    veto_text = f"Do NOT play these moves this turn: {', '.join(veto_list)}.\n\n"
+        except Exception:
+            pass
         
         # Get PGN history and opening recognition
         pgn_history = self.get_pgn_history(include_headers=True, max_moves=30)  # Last 30 moves for context
@@ -275,17 +284,17 @@ class ChessGame(BaseGame):
         # DYNAMIC PROMPT GENERATION based on game phase
         if game_phase == 'opening':
             enhanced_prompt = self.get_opening_prompt_template(
-                color_name, phase_info, shown_moves, failed_moves_text + previous_feedback_text, 
+                color_name, phase_info, shown_moves, failed_moves_text + previous_feedback_text + veto_text, 
                 pgn_history, opening_name, current_fen, current_board_display, move_number
             )
         elif game_phase == 'middlegame':
             enhanced_prompt = self.get_middlegame_prompt_template(
-                color_name, phase_info, shown_moves, failed_moves_text + previous_feedback_text,
+                color_name, phase_info, shown_moves, failed_moves_text + previous_feedback_text + veto_text,
                 pgn_history, opening_name, current_fen, current_board_display, move_number
             )
         else:  # endgame
             enhanced_prompt = self.get_endgame_prompt_template(
-                color_name, phase_info, shown_moves, failed_moves_text + previous_feedback_text,
+                color_name, phase_info, shown_moves, failed_moves_text + previous_feedback_text + veto_text,
                 pgn_history, opening_name, current_fen, current_board_display, move_number
             )
 
@@ -503,9 +512,12 @@ class ChessGame(BaseGame):
         return 4
 
     def _would_be_gross_blunder(self, move: chess.Move) -> bool:
-        # Phase/tactical-aware threshold
+        # Phase/tactical-aware threshold (adjust if side is already behind)
         threshold = self._blunder_threshold()
         baseline = self._evaluate_material(self.board)
+        if baseline < -2:
+            # If already worse materially, allow more risk-taking
+            threshold += 1
         temp = self.board.copy()
         temp.push(move)
         worst_drop = 0
