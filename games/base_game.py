@@ -273,7 +273,15 @@ class BaseGame(ABC):
                 return True
             else:
                 # Invalid move, track it and try again
-                self.failed_moves[player_name].add(action)
+                skip_track = False
+                try:
+                    skip_track = getattr(self, '_skip_track_failed', False)
+                    if skip_track:
+                        setattr(self, '_skip_track_failed', False)
+                except Exception:
+                    skip_track = False
+                if not skip_track:
+                    self.failed_moves[player_name].add(action)
                 print(f"DEBUG: Move {action} invalid, attempt {attempt + 1}/{max_attempts}")
                 print(f"DEBUG: Failed moves for {player_name}: {list(self.failed_moves[player_name])}")
                 try:
@@ -289,13 +297,19 @@ class BaseGame(ABC):
                         f"Player {player_name} made {max_attempts} invalid moves",
                         {"last_move": action, "legal_moves": legal_actions[:5]}
                     )
-                    # Try one random move as absolute fallback
-                    random_move = random.choice(legal_actions)
-                    print(f"DEBUG: Forcing random legal move: {random_move}")
-                    if self.validate_and_apply_action(random_move):
+                    # Try safe fallback move instead of random
+                    try:
+                        if hasattr(self, 'get_safe_fallback_action') and callable(getattr(self, 'get_safe_fallback_action')):
+                            fallback_move = self.get_safe_fallback_action()
+                        else:
+                            fallback_move = random.choice(legal_actions)
+                    except Exception:
+                        fallback_move = random.choice(legal_actions)
+                    print(f"DEBUG: Forcing fallback legal move: {fallback_move}")
+                    if self.validate_and_apply_action(fallback_move):
                         self.logger.log_move(
                             player=player_name,
-                            move=random_move,
+                            move=fallback_move,
                             reasoning="Emergency fallback: random legal move",
                             game_state=self.get_state_text(),
                             move_number=self.move_count,

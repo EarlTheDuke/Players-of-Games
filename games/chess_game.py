@@ -149,7 +149,9 @@ class ChessGame(BaseGame):
                 if self._would_be_gross_blunder(move):
                     print("DEBUG: Potential blunder detected; rejecting move for retry")
                     try:
-                        self._last_failure_reason[self.current_player] = "Previous attempt likely blundered material (>3)"
+                        self._last_failure_reason[self.current_player] = "Previous attempt likely blundered material (>threshold)"
+                        # Mark to skip tracking as failed repetition; this is a veto, not illegal
+                        setattr(self, '_skip_track_failed', True)
                     except Exception:
                         pass
                     return False
@@ -323,14 +325,11 @@ class ChessGame(BaseGame):
         print("🔍 MOVE VALIDATION DEBUG - DETAILED ANALYSIS")
         print("="*80)
         
-        # Require candidates presence; if missing, reject to force richer reasoning
+        # Soft-check for candidates: don't reject outright if a legal move is provided
         try:
             has_candidates = bool(re.search(r"CANDIDATES\s*:|Candidates\s*:|candidates\s*:", response))
         except Exception:
             has_candidates = True
-        if not has_candidates:
-            print("❌ VALIDATION FAILED: No CANDIDATES section present in response")
-            return None
         # Step 1: Parse the move from AI response
         parsed_move = parse_chess_move(response)
         print(f"📝 AI Response (first 200 chars): {response[:200]}...")
@@ -417,6 +416,12 @@ class ChessGame(BaseGame):
             print(f"   ✅ Move is legal on board: {is_legal}")
             
             if is_legal:
+                if not has_candidates:
+                    print("⚠️ FORMAT WARNING: No CANDIDATES section present; accepting legal move but will warn in next prompt.")
+                    try:
+                        self._last_failure_reason[self.current_player] = "Missing CANDIDATES: include 2-3 lines next time"
+                    except Exception:
+                        pass
                 print(f"🎉 VALIDATION SUCCESS: Move '{parsed_move}' is valid!")
                 try:
                     from debug_console import debug_log
@@ -464,20 +469,44 @@ class ChessGame(BaseGame):
             score += val if p.color == self.board.turn else -val
         return score
 
+    def _compute_tactical_density(self) -> int:
+        # Simple proxy: number of captures available + checks available
+        captures = sum(1 for m in self.board.legal_moves if self.board.is_capture(m))
+        checks = 0
+        for m in list(self.board.legal_moves)[:50]:
+            self.board.push(m)
+            if self.board.is_check():
+                checks += 1
+            self.board.pop()
+        return captures + checks
+
+    def _blunder_threshold(self) -> int:
+        phase, _ = self.detect_game_phase()
+        density = self._compute_tactical_density()
+        # Relax in sharp positions, stricter in quiet endgames
+        if phase == 'endgame' and density <= 2:
+            return 3
+        if density >= 6:
+            return 5
+        return 4
+
     def _would_be_gross_blunder(self, move: chess.Move) -> bool:
-        # Simulate simple 1-ply opponent replies and check material swing (>3)
+        # Phase/tactical-aware threshold
+        threshold = self._blunder_threshold()
         baseline = self._evaluate_material(self.board)
         temp = self.board.copy()
         temp.push(move)
         worst_drop = 0
-        for idx, opp_move in enumerate(list(temp.legal_moves)):
-            if idx > 7:
-                break
+        # Prioritize forcing replies first
+        replies = list(temp.legal_moves)
+        forcing = [m for m in replies if temp.is_capture(m)]
+        replies = forcing + [m for m in replies if m not in forcing]
+        for idx, opp_move in enumerate(replies[:12]):
             temp.push(opp_move)
             delta = baseline - self._evaluate_material(temp)
             worst_drop = max(worst_drop, delta)
             temp.pop()
-        return worst_drop >= 3
+        return worst_drop >= threshold
 
     def _get_checking_pieces(self) -> List[str]:
         if not self.board.is_check():
