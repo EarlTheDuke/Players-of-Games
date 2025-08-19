@@ -2,6 +2,7 @@
 import chess
 import chess.pgn
 from typing import List, Optional, Tuple
+import re
 from .base_game import BaseGame
 import sys
 import os
@@ -34,6 +35,8 @@ class ChessGame(BaseGame):
         
         # For PGN export
         self.moves_san = []
+        # Cache threats for prompt injection
+        self._cached_threats_text: Optional[str] = None
     
     def get_game_name(self) -> str:
         """Return the name of the game."""
@@ -118,6 +121,10 @@ class ChessGame(BaseGame):
                     print(f"DEBUG: Successfully parsed algebraic move: {action} -> {move}")
                 except (ValueError, chess.InvalidMoveError, chess.IllegalMoveError) as e:
                     print(f"DEBUG: Failed to parse algebraic notation {action}: {e}")
+                    try:
+                        self._last_failure_reason[self.current_player] = f"Could not parse move '{action}'"
+                    except Exception:
+                        pass
                     return False
             
             if move is None:
@@ -137,18 +144,28 @@ class ChessGame(BaseGame):
             except:
                 pass
             
-            # Check if move is legal
+            # Optional lightweight blunder check before applying
             if move in self.board.legal_moves:
+                if self._would_be_gross_blunder(move):
+                    print("DEBUG: Potential blunder detected; rejecting move for retry")
+                    try:
+                        self._last_failure_reason[self.current_player] = "Previous attempt likely blundered material (>3)"
+                    except Exception:
+                        pass
+                    return False
                 # Store move in SAN notation for PGN
                 san_move = self.board.san(move)
                 self.moves_san.append(san_move)
-                
                 # Apply the move
                 self.board.push(move)
                 print(f"DEBUG: Move {action} applied successfully")
                 return True
             else:
                 print(f"DEBUG: Move {action} is not legal in current position")
+                try:
+                    self._last_failure_reason[self.current_player] = f"Move '{action}' is not legal in this position"
+                except Exception:
+                    pass
                 return False
                 
         except (ValueError, chess.InvalidMoveError) as e:
@@ -191,15 +208,20 @@ class ChessGame(BaseGame):
                 # Pawn moves and castling
                 pawn_moves.append(f"{san} ({uci})")
         
-        # Limit display to avoid overwhelming the AI
-        max_moves = 10
-        if len(legal_moves_uci) > max_moves:
-            # Show most important moves first (piece moves, then pawn moves)
-            shown_moves = piece_moves[:6] + pawn_moves[:4]
-            if len(legal_moves_uci) > max_moves:
-                shown_moves.append(f"... and {len(legal_moves_uci) - max_moves} more moves")
+        # Prefer to show captures first and expand if few total moves
+        captures = []
+        non_captures = []
+        for uci in legal_moves_uci:
+            mv = chess.Move.from_uci(uci)
+            (captures if self.board.is_capture(mv) else non_captures).append(uci)
+        shown_pairs = []
+        for uci in captures + non_captures:
+            san = self.board.san(chess.Move.from_uci(uci))
+            shown_pairs.append(f"{san} ({uci})")
+        if len(shown_pairs) <= 20:
+            shown_moves = shown_pairs
         else:
-            shown_moves = piece_moves + pawn_moves
+            shown_moves = shown_pairs[:20] + [f"... and {len(shown_pairs) - 20} more moves"]
         
         # Get fresh board state
         current_fen = self.get_state_text()
@@ -212,6 +234,14 @@ class ChessGame(BaseGame):
             failed_moves_list = list(self.failed_moves[self.current_player])
             if failed_moves_list:
                 failed_moves_text = f"\n⚠️  IMPORTANT: You previously tried these moves which failed validation: {', '.join(failed_moves_list)}. Please choose a DIFFERENT move from the legal moves list.\n"
+        # Include last failure reason if any
+        previous_feedback_text = ""
+        try:
+            last_reason = self._last_failure_reason.get(self.current_player) if hasattr(self, '_last_failure_reason') else ""
+            if last_reason:
+                previous_feedback_text = f"Previous attempt failed because: {last_reason}. Choose differently.\n\n"
+        except Exception:
+            previous_feedback_text = ""
         
         # Get PGN history and opening recognition
         pgn_history = self.get_pgn_history(include_headers=True, max_moves=30)  # Last 30 moves for context
@@ -219,6 +249,9 @@ class ChessGame(BaseGame):
         
         # PHASE-AWARE SYSTEM: Detect current game phase
         game_phase, phase_info = self.detect_game_phase()
+        # Threat analysis injection
+        threats_text = self.get_threats()
+        self._cached_threats_text = threats_text
         
         # Debug: Log what we're showing the AI
         print(f"DEBUG: Showing AI - FEN: {current_fen}")
@@ -241,19 +274,30 @@ class ChessGame(BaseGame):
         # DYNAMIC PROMPT GENERATION based on game phase
         if game_phase == 'opening':
             enhanced_prompt = self.get_opening_prompt_template(
-                color_name, phase_info, shown_moves, failed_moves_text, 
+                color_name, phase_info, shown_moves, failed_moves_text + previous_feedback_text, 
                 pgn_history, opening_name, current_fen, current_board_display, move_number
             )
         elif game_phase == 'middlegame':
             enhanced_prompt = self.get_middlegame_prompt_template(
-                color_name, phase_info, shown_moves, failed_moves_text,
+                color_name, phase_info, shown_moves, failed_moves_text + previous_feedback_text,
                 pgn_history, opening_name, current_fen, current_board_display, move_number
             )
         else:  # endgame
             enhanced_prompt = self.get_endgame_prompt_template(
-                color_name, phase_info, shown_moves, failed_moves_text,
+                color_name, phase_info, shown_moves, failed_moves_text + previous_feedback_text,
                 pgn_history, opening_name, current_fen, current_board_display, move_number
             )
+
+        # Prepend board verification and immediate threats
+        verification = (
+            "=== BOARD VERIFICATION ===\n"
+            "Step 1: Confirm the position from FEN/ASCII. List your pieces explicitly. Do not assume extra pieces.\n\n"
+            "=== IMMEDIATE THREATS ===\n"
+            f"{threats_text if threats_text else 'No immediate threats.'}\n\n"
+            "Address all threats before planning.\n\n"
+            "When responding, include: CANDIDATES: [Top 3 with concrete short variations], MOVE: [...], REASONING: [100-150 words comparing candidates with concrete lines].\n"
+        )
+        enhanced_prompt = verification + enhanced_prompt
         
         # Log final prompt details for monitoring
         try:
@@ -271,6 +315,14 @@ class ChessGame(BaseGame):
         print("🔍 MOVE VALIDATION DEBUG - DETAILED ANALYSIS")
         print("="*80)
         
+        # Require candidates presence; if missing, reject to force richer reasoning
+        try:
+            has_candidates = bool(re.search(r"CANDIDATES\s*:|Candidates\s*:|candidates\s*:", response))
+        except Exception:
+            has_candidates = True
+        if not has_candidates:
+            print("❌ VALIDATION FAILED: No CANDIDATES section present in response")
+            return None
         # Step 1: Parse the move from AI response
         parsed_move = parse_chess_move(response)
         print(f"📝 AI Response (first 200 chars): {response[:200]}...")
@@ -386,6 +438,126 @@ class ChessGame(BaseGame):
             pass
             
         return None
+
+    def _evaluate_material(self, board: chess.Board) -> int:
+        piece_values = {
+            chess.PAWN: 1,
+            chess.KNIGHT: 3,
+            chess.BISHOP: 3,
+            chess.ROOK: 5,
+            chess.QUEEN: 9,
+        }
+        score = 0
+        for sq in chess.SQUARES:
+            p = board.piece_at(sq)
+            if not p:
+                continue
+            val = piece_values.get(p.piece_type, 0)
+            score += val if p.color == self.board.turn else -val
+        return score
+
+    def _would_be_gross_blunder(self, move: chess.Move) -> bool:
+        # Simulate simple 1-ply opponent replies and check material swing (>3)
+        baseline = self._evaluate_material(self.board)
+        temp = self.board.copy()
+        temp.push(move)
+        worst_drop = 0
+        for idx, opp_move in enumerate(list(temp.legal_moves)):
+            if idx > 7:
+                break
+            temp.push(opp_move)
+            delta = baseline - self._evaluate_material(temp)
+            worst_drop = max(worst_drop, delta)
+            temp.pop()
+        return worst_drop >= 3
+
+    def _get_checking_pieces(self) -> List[str]:
+        if not self.board.is_check():
+            return []
+        checkers = []
+        king_sq = self.board.king(self.board.turn)
+        for sq in self.board.attackers(not self.board.turn, king_sq):
+            piece = self.board.piece_at(sq)
+            if piece:
+                checkers.append(f"{piece.symbol()} on {chess.square_name(sq)}")
+        return checkers
+
+    def _find_hanging_pieces(self) -> List[str]:
+        hanging: List[str] = []
+        for sq in chess.SQUARES:
+            piece = self.board.piece_at(sq)
+            if piece and piece.color == self.board.turn:
+                attackers = len(self.board.attackers(not self.board.turn, sq))
+                defenders = len(self.board.attackers(self.board.turn, sq))
+                if attackers > defenders:
+                    hanging.append(f"{piece.symbol()} on {chess.square_name(sq)} (attacked {attackers}, defended {defenders})")
+        return hanging
+
+    def _find_protected_attacks(self) -> List[str]:
+        traps: List[str] = []
+        # Look for opponent pieces attacked that are insufficiently defended
+        for sq in chess.SQUARES:
+            piece = self.board.piece_at(sq)
+            if piece and piece.color != self.board.turn:
+                attackers = list(self.board.attackers(self.board.turn, sq))
+                if not attackers:
+                    continue
+                defenders = list(self.board.attackers(not self.board.turn, sq))
+                if len(attackers) > len(defenders):
+                    traps.append(f"Attack on {piece.symbol()} at {chess.square_name(sq)} may win material")
+        return traps
+
+    def get_threats(self) -> str:
+        threats: List[str] = []
+        if self.board.is_check():
+            threats.append(f"You are in check from {', '.join(self._get_checking_pieces())}.")
+        hanging = self._find_hanging_pieces()
+        if hanging:
+            threats.append(f"Hanging pieces: {', '.join(hanging)}.")
+        protected_attacks = self._find_protected_attacks()
+        if protected_attacks:
+            threats.append(f"Potential traps: {', '.join(protected_attacks)}.")
+        return "\n".join(threats) if threats else "No immediate threats."
+
+    def get_model_params(self) -> dict:
+        # Lower temperature in endgame for determinism; allow more tokens
+        phase, _ = self.detect_game_phase()
+        if phase == 'endgame':
+            return {"temperature": 0.3, "max_tokens": 800}
+        return {"temperature": 0.7, "max_tokens": 500}
+
+    def get_max_attempts(self) -> int:
+        phase, _ = self.detect_game_phase()
+        return 5 if phase == 'endgame' else 3
+
+    def get_safe_fallback_action(self) -> str:
+        # Choose legal move that avoids check and minimizes immediate capture exposure
+        best_move = None
+        best_score = -10**9
+        for mv in list(self.board.legal_moves):
+            score = 0
+            # Prefer moves that resolve check
+            if self.board.is_check():
+                temp = self.board.copy()
+                temp.push(mv)
+                if not temp.is_check():
+                    score += 100
+            # Penalize moves that hang material
+            temp2 = self.board.copy()
+            temp2.push(mv)
+            attackers = 0
+            piece_sq = mv.to_square
+            if temp2.piece_at(piece_sq):
+                attackers = len(temp2.attackers(not self.board.turn, piece_sq))
+                defenders = len(temp2.attackers(self.board.turn, piece_sq))
+                score -= max(0, attackers - defenders)
+            # Small bonus for captures
+            if self.board.is_capture(mv):
+                score += 1
+            if score > best_score:
+                best_score = score
+                best_move = mv
+        return best_move.uci() if best_move else list(self.board.legal_moves)[0].uci()
     
     def get_pgn_history(self, include_headers: bool = True, max_moves: Optional[int] = None) -> str:
         """

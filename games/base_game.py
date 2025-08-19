@@ -44,6 +44,8 @@ class BaseGame(ABC):
         
         # Track failed moves to prevent AI from repeating the same mistakes
         self.failed_moves = {player: set() for player in players.keys()}
+        # Track last failure reasons to feed back into prompts
+        self._last_failure_reason: Dict[str, str] = {player: "" for player in players.keys()}
         
     @property
     def current_player(self) -> str:
@@ -138,10 +140,19 @@ class BaseGame(ABC):
             print(f"DEBUG: Prompt length: {len(prompt)} characters")
             print(f"DEBUG: First 100 chars of prompt: {prompt[:100]}...")
             
+            # Allow subclasses to influence model parameters (e.g., endgame determinism)
+            model_params = {}
+            if hasattr(self, 'get_model_params') and callable(getattr(self, 'get_model_params')):
+                try:
+                    model_params = self.get_model_params() or {}
+                except Exception:
+                    model_params = {}
             response = config['api_function'](
-                prompt, 
+                prompt,
                 config['api_key'],
-                config['model']
+                config['model'],
+                temperature=model_params.get('temperature'),
+                max_tokens=model_params.get('max_tokens'),
             )
             
             print(f"DEBUG: API response length: {len(response) if response else 0}")
@@ -173,7 +184,13 @@ class BaseGame(ABC):
             True if move was successful, False if game should end
         """
         player_name = self.current_player
+        # Allow subclass to adjust attempts dynamically (e.g., deeper in endgames)
         max_attempts = 3
+        if hasattr(self, 'get_max_attempts') and callable(getattr(self, 'get_max_attempts')):
+            try:
+                max_attempts = int(self.get_max_attempts())
+            except Exception:
+                max_attempts = 3
         
         # Check if we have legal moves before starting
         legal_actions = self.get_legal_actions()
@@ -200,14 +217,20 @@ class BaseGame(ABC):
                 )
                 
                 if attempt == max_attempts - 1:
-                    # Final attempt failed, use random move
+                    # Final attempt failed, use safe heuristic fallback if available
                     legal_actions = self.get_legal_actions()
                     if legal_actions:
-                        action = random.choice(legal_actions)
-                        reasoning = f"Random fallback move after {max_attempts} failed attempts"
+                        if hasattr(self, 'get_safe_fallback_action') and callable(getattr(self, 'get_safe_fallback_action')):
+                            try:
+                                action = self.get_safe_fallback_action()
+                            except Exception:
+                                action = random.choice(legal_actions)
+                        else:
+                            action = random.choice(legal_actions)
+                        reasoning = f"Fallback move after {max_attempts} failed attempts"
                         self.logger.log_error(
                             "fallback_move",
-                            f"Using random move: {action}",
+                            f"Using fallback move: {action}",
                             {"player": player_name}
                         )
                     else:
@@ -233,6 +256,7 @@ class BaseGame(ABC):
             if is_valid:
                 # Move was successful - clear failed moves for this player
                 self.failed_moves[player_name].clear()
+                self._last_failure_reason[player_name] = ""
                 self.next_player()
                 print(f"DEBUG: Move {action} successful, switched to {self.current_player}")
                 try:

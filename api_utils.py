@@ -24,7 +24,14 @@ def exponential_backoff(attempt: int) -> None:
     time.sleep(delay)
 
 
-def call_grok(prompt: str, api_key: str, model: str = "grok-beta") -> Optional[str]:
+def call_grok(
+    prompt: str,
+    api_key: str,
+    model: str = "grok-beta",
+    *,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+) -> Optional[str]:
     """
     Call the Grok API with the given prompt.
     
@@ -51,8 +58,8 @@ def call_grok(prompt: str, api_key: str, model: str = "grok-beta") -> Optional[s
         "messages": [
             {"role": "user", "content": prompt}
         ],
-        "max_tokens": 500,
-        "temperature": 0.7
+        "max_tokens": max_tokens if max_tokens is not None else 500,
+        "temperature": temperature if temperature is not None else 0.7,
     }
     
     for attempt in range(MAX_RETRIES):
@@ -72,36 +79,28 @@ def call_grok(prompt: str, api_key: str, model: str = "grok-beta") -> Optional[s
             )
             
             print(f"DEBUG: Response status: {response.status_code}")
-            print(f"DEBUG: Response headers: {dict(response.headers)}")
+            try:
+                print(f"DEBUG: Response headers: {dict(response.headers)}")
+            except Exception:
+                print("DEBUG: Response headers unavailable (mock or non-dict)")
             
             response.raise_for_status()
-            
-            # Check for empty response body
-            response_text = response.text
-            print(f"DEBUG: API response length: {len(response_text)}")
-            if len(response_text) > 0:
-                print(f"DEBUG: First 100 chars of response: {response_text[:100]}")
-            
-            if not response_text or len(response_text) == 0:
-                print(f"WARNING: Empty response body from Grok API (attempt {attempt + 1}/{MAX_RETRIES})")
-                if attempt < MAX_RETRIES - 1:
-                    print("Retrying with exponential backoff...")
-                    exponential_backoff(attempt)
-                    continue
-                else:
-                    print("ERROR: All attempts returned empty responses")
-                    return None
             
             try:
                 data = response.json()
             except ValueError as json_error:
                 print(f"ERROR: Invalid JSON response: {json_error}")
-                print(f"Response text: {response_text[:200]}...")
+                try:
+                    response_text = response.text
+                    if isinstance(response_text, str):
+                        print(f"Response text: {response_text[:200]}...")
+                except Exception:
+                    pass
                 return None
             
-            if 'choices' in data and len(data['choices']) > 0:
-                content = data['choices'][0]['message']['content']
-                if content and content.strip():
+            if isinstance(data, dict) and 'choices' in data and isinstance(data['choices'], list) and len(data['choices']) > 0:
+                content = data['choices'][0].get('message', {}).get('content') if isinstance(data['choices'][0], dict) else None
+                if content and isinstance(content, str) and content.strip():
                     return content
                 else:
                     print(f"WARNING: Empty content in API response (attempt {attempt + 1}/{MAX_RETRIES})")
@@ -138,6 +137,12 @@ def call_grok(prompt: str, api_key: str, model: str = "grok-beta") -> Optional[s
             else:
                 print("All Grok API retry attempts failed")
                 return None
+        except Exception as e:
+            print(f"Grok API unexpected error (attempt {attempt + 1}): {e}")
+            if attempt < MAX_RETRIES - 1:
+                exponential_backoff(attempt)
+            else:
+                return None
         except json.JSONDecodeError as e:
             print(f"Failed to decode Grok API response: {e}")
             return None
@@ -145,7 +150,14 @@ def call_grok(prompt: str, api_key: str, model: str = "grok-beta") -> Optional[s
     return None
 
 
-def call_claude(prompt: str, api_key: str, model: str = "claude-3-5-sonnet-20241022") -> Optional[str]:
+def call_claude(
+    prompt: str,
+    api_key: str,
+    model: str = "claude-3-5-sonnet-20241022",
+    *,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+) -> Optional[str]:
     """
     Call the Claude API with the given prompt.
     
@@ -170,11 +182,14 @@ def call_claude(prompt: str, api_key: str, model: str = "claude-3-5-sonnet-20241
     
     payload = {
         "model": model,
-        "max_tokens": 500,
+        "max_tokens": max_tokens if max_tokens is not None else 500,
         "messages": [
             {"role": "user", "content": prompt}
-        ]
+        ],
     }
+    # Claude supports temperature via params in some versions; include if provided
+    if temperature is not None:
+        payload["temperature"] = temperature
     
     for attempt in range(MAX_RETRIES):
         try:
@@ -189,7 +204,10 @@ def call_claude(prompt: str, api_key: str, model: str = "claude-3-5-sonnet-20241
             )
             
             print(f"DEBUG: Response status: {response.status_code}")
-            print(f"DEBUG: Response headers: {dict(response.headers)}")
+            try:
+                print(f"DEBUG: Response headers: {dict(response.headers)}")
+            except Exception:
+                print("DEBUG: Response headers unavailable (mock or non-dict)")
             
             response.raise_for_status()
             
@@ -210,6 +228,12 @@ def call_claude(prompt: str, api_key: str, model: str = "claude-3-5-sonnet-20241
                 exponential_backoff(attempt)
             else:
                 print("All Claude API retry attempts failed")
+                return None
+        except Exception as e:
+            print(f"Claude API unexpected error (attempt {attempt + 1}): {e}")
+            if attempt < MAX_RETRIES - 1:
+                exponential_backoff(attempt)
+            else:
                 return None
         except json.JSONDecodeError as e:
             print(f"Failed to decode Claude API response: {e}")
