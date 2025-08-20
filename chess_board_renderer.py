@@ -40,8 +40,12 @@ def render_chess_board_with_info(board: chess.Board, player_info=None, highlight
     board_html = render_chess_board(board, combined_highlights, board_size)
     
     # Add player info and captured pieces panel
-    info_panel_width = 160  # Further reduced width to prevent cutoff
+    info_panel_width = 220  # Slightly wider to show all captured units and scores
     total_width = board_size + info_panel_width + 15  # Reduced spacing
+    
+    # Running totals for captured pieces (points)
+    black_captured_score = calculate_captured_score(captured_pieces['white'])  # Points for Black
+    white_captured_score = calculate_captured_score(captured_pieces['black'])  # Points for White
     
     info_panel_html = f"""
     <div style="width: 100%; max-width: {total_width}px; margin: 0; overflow: visible;">
@@ -56,8 +60,8 @@ def render_chess_board_with_info(board: chess.Board, player_info=None, highlight
                     <strong>♛ {player_info.get('black', 'Black')}</strong>
                 </div>
                 <div style="background: #E8E8E8; padding: 8px; border-radius: 5px; min-height: 40px;">
-                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Captured:</div>
-                    <div style="font-size: 18px; line-height: 1.2;">
+                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Captured: <span style=\"font-weight: bold; color: #333;\">{black_captured_score}</span> pts</div>
+                    <div style="font-size: 18px; line-height: 1.2; word-break: break-word; overflow-wrap: anywhere;">
                         {format_captured_pieces(captured_pieces['white'])}
                     </div>
                 </div>
@@ -77,8 +81,8 @@ def render_chess_board_with_info(board: chess.Board, player_info=None, highlight
             <!-- White Player Info (Bottom) -->
             <div style="text-align: center;">
                 <div style="background: #E8E8E8; padding: 8px; border-radius: 5px; min-height: 40px; margin-bottom: 10px;">
-                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Captured:</div>
-                    <div style="font-size: 18px; line-height: 1.2;">
+                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Captured: <span style=\"font-weight: bold; color: #333;\">{white_captured_score}</span> pts</div>
+                    <div style="font-size: 18px; line-height: 1.2; word-break: break-word; overflow-wrap: anywhere;">
                         {format_captured_pieces(captured_pieces['black'])}
                     </div>
                 </div>
@@ -168,6 +172,16 @@ def format_captured_pieces(pieces_list):
             symbols.append(PIECE_SYMBOLS[piece])
     
     return ''.join(symbols)
+
+def calculate_captured_score(pieces_list):
+    """Calculate score for a list of captured pieces (material points)."""
+    if not pieces_list:
+        return 0
+    values = {'P': 1, 'p': 1, 'N': 3, 'n': 3, 'B': 3, 'b': 3, 'R': 5, 'r': 5, 'Q': 9, 'q': 9, 'K': 0, 'k': 0}
+    score = 0
+    for p in pieces_list:
+        score += values.get(p, 0)
+    return score
 
 def render_chess_board(board: chess.Board, highlight_squares=None, board_size=400):
     """
