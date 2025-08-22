@@ -1342,22 +1342,6 @@ Standard values: Pawn=1 (add +1-3 if passed/near promotion), Knight/Bishop=3, Ro
 === YOUR LEGAL MOVES ===
 Available moves: {", ".join(shown_moves)}
 
-=== ENDGAME EVALUATION CRITERIA ===
-For each candidate move, calculate:
-1. **KING IMPROVEMENT**: Does this centralize/activate king?
-2. **PAWN PROGRESS**: Does this advance or support passed pawns?
-3. **OPPOSITION**: Does this maintain/gain opposition?
-4. **TEMPO**: Does this gain or lose crucial time?
-5. **CONCRETE RESULT**: Can you calculate to a clear win/draw?
-
-=== CALCULATION REQUIREMENTS ===
-- Calculate at least 3-4 moves deep
-- Count moves to pawn promotion for both sides
-- Look for tactical shots (even in simple positions)
-- Verify your evaluation with concrete variations
-
-CRITICAL: Endgames require precise calculation - every tempo counts!
-
 Format your response:
 MOVE: [your move in UCI format (e2e4) or algebraic notation (e4, Nf3, O-O)]
 REASONING: [75-125 words: Explain your choice based on king activity, pawn technique, and concrete calculation. Mention your top 2-3 candidate moves and why you chose this one.]
