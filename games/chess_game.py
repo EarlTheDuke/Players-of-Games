@@ -41,6 +41,43 @@ class ChessGame(BaseGame):
         # Per-turn veto tracking to avoid repetition loops
         self._vetoed_moves_this_turn: dict[str, int] = {}
     
+    def _log_block(self, title: str, lines: list[str]) -> None:
+        """Utility to emit a single multi-line debug block to the debug console."""
+        try:
+            from debug_console import debug_log
+            header = f"\n{'='*80}\n{title}\n{'='*80}"
+            body = "\n".join(lines)
+            debug_log(f"{header}\n{body}")
+        except Exception:
+            pass
+
+    def _log_turn_context(self, *, player_name: str, color_name: str, move_number: int,
+                           opening_name: str, current_fen: str, current_board_display: str,
+                           game_phase: str, phase_info: dict, shown_moves: list[str],
+                           previous_feedback_text: str, veto_text: str) -> None:
+        try:
+            model_params = self.get_model_params()
+        except Exception:
+            model_params = {}
+        lines: list[str] = []
+        lines.append(f"Turn: {move_number}, Player: {player_name} ({color_name})")
+        lines.append(f"Phase: {game_phase.upper()}, Opening: {opening_name}")
+        lines.append(f"FEN: {current_fen}")
+        lines.append("Board:\n" + current_board_display)
+        lines.append(f"Legal moves shown: {min(len(shown_moves), 20)} (of ~{len(shown_moves) if 'more' not in shown_moves[-1] else '20+'})")
+        if previous_feedback_text.strip():
+            lines.append("Feedback: " + previous_feedback_text.strip())
+        if veto_text.strip():
+            lines.append("Vetoed: " + veto_text.strip())
+        if phase_info:
+            try:
+                lines.append(f"Phase stats: pieces={phase_info.get('piece_count')}, material_total={phase_info.get('total_material')}, material_balance={phase_info.get('material_balance'):+d}")
+            except Exception:
+                pass
+        if model_params:
+            lines.append(f"Model params: temperature={model_params.get('temperature')}, max_tokens={model_params.get('max_tokens')}")
+        self._log_block("TURN CONTEXT", lines)
+
     def get_game_name(self) -> str:
         """Return the name of the game."""
         return "chess"
@@ -301,6 +338,24 @@ class ChessGame(BaseGame):
                 pgn_history, opening_name, current_fen, current_board_display, move_number
             )
 
+        # Emit a consolidated turn context block to the debug console
+        try:
+            self._log_turn_context(
+                player_name=self.current_player,
+                color_name=color_name,
+                move_number=move_number,
+                opening_name=opening_name,
+                current_fen=current_fen,
+                current_board_display=current_board_display,
+                game_phase=game_phase,
+                phase_info=phase_info,
+                shown_moves=shown_moves,
+                previous_feedback_text=previous_feedback_text,
+                veto_text=veto_text,
+            )
+        except Exception:
+            pass
+
         # Prepend board verification and immediate threats
         verification = (
             "=== BOARD VERIFICATION ===\n"
@@ -458,6 +513,12 @@ class ChessGame(BaseGame):
                 )
             except Exception:
                 pass
+            # Emit structured block for easier post-mortem
+            self._log_block("MOVE PARSE FAILURE", [
+                f"Player: {self.current_player}",
+                f"Turn: {self.board.fullmove_number}",
+                "Reason: Could not extract a valid MOVE from the response",
+            ])
             return None
             
         print(f"\n🔍 TESTING PARSED MOVE: '{parsed_move}'")
@@ -533,10 +594,23 @@ class ChessGame(BaseGame):
                     debug_log(f"VALIDATION SUCCESS: {parsed_move} -> {move_obj}")
                 except:
                     pass
+                # Emit a compact summary block for this validation
+                self._log_block("MOVE VALIDATION DETAILS", [
+                    f"Turn: {self.board.fullmove_number}",
+                    f"Player: {self.current_player}",
+                    f"Proposed: {parsed_move} (parsed via {parsing_method})",
+                    f"Legal: True",
+                ])
                 return parsed_move
             else:
                 print(f"❌ VALIDATION FAILED: Move object exists but is not in legal moves")
                 print(f"   Legal move objects: {legal_moves_objects[:10]}...")
+                self._log_block("MOVE INVALID (NOT LEGAL)", [
+                    f"Turn: {self.board.fullmove_number}",
+                    f"Player: {self.current_player}",
+                    f"Proposed: {parsed_move}",
+                    "Legal: False",
+                ])
         else:
             print(f"❌ VALIDATION FAILED: Could not create move object from '{parsed_move}'")
             try:
