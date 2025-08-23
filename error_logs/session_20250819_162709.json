@@ -1,0 +1,1 @@
+{"timestamp": "2025-08-19T16:27:09.321658", "session_id": "20250819_162709", "level": "INFO", "category": "SYSTEM", "message": "Error logging system initialized", "context": {"session_id": "20250819_162709", "log_dir": "error_logs"}, "exception_info": null}

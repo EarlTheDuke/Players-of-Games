@@ -3,6 +3,7 @@ import chess
 import chess.pgn
 from typing import List, Optional, Tuple
 import re
+import json
 from .base_game import BaseGame
 import sys
 import os
@@ -243,13 +244,15 @@ class ChessGame(BaseGame):
                 previous_feedback_text = f"Previous attempt failed because: {last_reason}. Choose differently.\n\n"
         except Exception:
             previous_feedback_text = ""
-        # Include per-turn vetoed moves (to avoid repeated blunders)
+        # Include per-turn vetoed moves (to avoid repeated blunders) - cap to 5 entries for brevity
         veto_text = ""
         try:
             if getattr(self, '_vetoed_moves_this_turn', None):
-                veto_list = [f"{mv} (vetoed {cnt}x)" for mv, cnt in self._vetoed_moves_this_turn.items() if cnt >= 1]
-                if veto_list:
-                    veto_text = f"Do NOT play these moves this turn: {', '.join(veto_list)}.\n\n"
+                veto_items = [(mv, cnt) for mv, cnt in self._vetoed_moves_this_turn.items() if cnt >= 1]
+                veto_items.sort(key=lambda x: -x[1])
+                if veto_items:
+                    limited = [f"{mv} (vetoed {cnt}x)" for mv, cnt in veto_items[:5]]
+                    veto_text = f"Do NOT play these moves this turn: {', '.join(limited)}.\n\n"
         except Exception:
             pass
         
@@ -301,11 +304,11 @@ class ChessGame(BaseGame):
         # Prepend board verification and immediate threats
         verification = (
             "=== BOARD VERIFICATION ===\n"
-            "Step 1: Confirm the position from FEN/ASCII. List your pieces explicitly. Do not assume extra pieces.\n\n"
+            "Step 1: Confirm the position from FEN/ASCII. List your pieces explicitly. Use full phrases (e.g., 'White Queen at h5'); avoid bare coordinates like 'h5' alone. Do not assume extra pieces.\n\n"
             "=== IMMEDIATE THREATS ===\n"
             f"{threats_text if threats_text else 'No immediate threats.'}\n\n"
             "Address all threats before planning.\n\n"
-            "When responding, include: CANDIDATES: [Top 3 with concrete short variations], MOVE: [...], REASONING: [100-150 words comparing candidates with concrete lines].\n"
+            "OUTPUT CONTRACT (STRICT): On the FIRST line, output exactly one of the following forms: MOVE: <SAN or UCI>  OR  {\"move\":\"<SAN or UCI>\"}. After that, you may write REASONING and CANDIDATES.\n"
         )
         enhanced_prompt = verification + enhanced_prompt
         
@@ -341,7 +344,7 @@ class ChessGame(BaseGame):
             pass
     
     def parse_action_from_response(self, response: str) -> Optional[str]:
-        """Parse a UCI move from the AI's response with extensive debugging."""
+        """Parse a move from the AI's response with a strict MOVE/JSON contract and extensive debugging."""
         print("\n" + "="*80)
         print("🔍 MOVE VALIDATION DEBUG - DETAILED ANALYSIS")
         print("="*80)
@@ -351,9 +354,52 @@ class ChessGame(BaseGame):
             has_candidates = bool(re.search(r"CANDIDATES\s*:|Candidates\s*:|candidates\s*:", response))
         except Exception:
             has_candidates = True
-        # Step 1: Parse the move from AI response
-        parsed_move = parse_chess_move(response)
+        
+        # Step 1: Strict extraction from JSON or MOVE: line
+        parsed_move: Optional[str] = None
+        raw_move: Optional[str] = None
         print(f"📝 AI Response (first 200 chars): {response[:200]}...")
+        
+        # 1a) Try to extract JSON {"move":"..."}
+        try:
+            json_match = re.search(r"\{\s*\"?move\"?\s*:\s*\"([^\"]+)\"\s*\}", response, re.IGNORECASE)
+            if json_match:
+                raw_move = json_match.group(1)
+        except Exception:
+            raw_move = None
+        
+        # 1b) If not found, look for the last MOVE: occurrence, accepting optional brackets
+        if not raw_move:
+            try:
+                move_matches = list(re.finditer(r"(?is)MOVE\s*:\s*(?:\[\s*)?(.+?)(?:\s*\]|\s*REASONING\s*:|\n|\r|$)", response, re.IGNORECASE))
+                if move_matches:
+                    raw_move = move_matches[-1].group(1)
+            except Exception:
+                raw_move = None
+        
+        if raw_move:
+            # Normalize: strip wrappers, markdown, stars, trailing punctuation
+            candidate = raw_move.strip()
+            candidate = candidate.strip('`* ').strip()
+            # Remove trailing punctuation that sometimes appears
+            candidate = re.sub(r"[\.;,:]+$", "", candidate)
+            # Collapse extra spaces
+            candidate = re.sub(r"\s+", " ", candidate)
+            # Some authors put the move in brackets like [Qxc5+]
+            candidate = candidate.strip('[]')
+            raw_move = candidate
+            print(f"🎯 Extracted raw move from contract: '{raw_move}'")
+        else:
+            print("❌ No MOVE or JSON move found in response")
+        
+        # Step 1c: Reject bare-square tokens like "h5" / "e1"
+        if raw_move and re.fullmatch(r"[a-h][1-8]", raw_move.strip(), flags=re.IGNORECASE):
+            print(f"❌ Rejected bare-square token as move: '{raw_move}'")
+            raw_move = None
+        
+        # Step 1d: If still None, attempt a conservative fallback by scanning for any legal token later
+        parsed_move = raw_move
+        
         print(f"🎯 Parsed move from AI: '{parsed_move}'")
         
         # Step 2: Get current board state
@@ -384,7 +430,34 @@ class ChessGame(BaseGame):
         
         # Step 4: Test the parsed move against legal moves
         if not parsed_move:
+            # Conservative tertiary fallback: try to find any legal SAN/UCI token inside the response
+            try:
+                # prefer SAN tokens with symbols like +/# which are less ambiguous
+                san_tokens = sorted(legal_moves_san, key=lambda s: (0 if ('+' in s or '#' in s) else 1, -len(s)))
+                for tok in san_tokens:
+                    if re.search(rf"(?<![A-Za-z0-9_]){re.escape(tok)}(?![A-Za-z0-9_])", response):
+                        parsed_move = tok
+                        print(f"✅ Fallback found SAN token in response: '{parsed_move}'")
+                        break
+                if not parsed_move:
+                    for tok in legal_moves_uci:
+                        if tok in response:
+                            parsed_move = tok
+                            print(f"✅ Fallback found UCI token in response: '{parsed_move}'")
+                            break
+            except Exception:
+                pass
+        if not parsed_move:
             print(f"❌ VALIDATION FAILED: No move could be parsed from AI response")
+            try:
+                if not hasattr(self, '_last_failure_reason'):
+                    self._last_failure_reason = {}
+                self._last_failure_reason[self.current_player] = (
+                    "Could not parse move from response. Respond with first line only: "
+                    "MOVE: <SAN or UCI>."
+                )
+            except Exception:
+                pass
             return None
             
         print(f"\n🔍 TESTING PARSED MOVE: '{parsed_move}'")
@@ -402,13 +475,24 @@ class ChessGame(BaseGame):
         move_obj = None
         parsing_method = None
         
-        # Try UCI parsing
+        # Try SAN first (accepts symbols like +/# and castling notation)
         try:
-            move_obj = chess.Move.from_uci(parsed_move)
-            parsing_method = "UCI"
-            print(f"   ✅ UCI parsing successful: {move_obj}")
+            move_obj = self.board.parse_san(parsed_move)
+            parsing_method = "SAN"
+            print(f"   ✅ SAN parsing successful: {move_obj}")
         except Exception as e:
-            print(f"   ❌ UCI parsing failed: {e}")
+            print(f"   ❌ SAN parsing failed: {e}")
+        
+        # Try UCI parsing if SAN failed, but only if format looks like UCI
+        if move_obj is None:
+            looks_like_uci = bool(re.fullmatch(r"[a-h][1-8][a-h][1-8][nbrqNBRQ]?", parsed_move))
+            if looks_like_uci:
+                try:
+                    move_obj = chess.Move.from_uci(parsed_move.lower())
+                    parsing_method = "UCI"
+                    print(f"   ✅ UCI parsing successful: {move_obj}")
+                except Exception as e:
+                    print(f"   ❌ UCI parsing failed: {e}")
         
         # Try SAN parsing if UCI failed
         if move_obj is None:
@@ -455,6 +539,14 @@ class ChessGame(BaseGame):
                 print(f"   Legal move objects: {legal_moves_objects[:10]}...")
         else:
             print(f"❌ VALIDATION FAILED: Could not create move object from '{parsed_move}'")
+            try:
+                if not hasattr(self, '_last_failure_reason'):
+                    self._last_failure_reason = {}
+                self._last_failure_reason[self.current_player] = (
+                    f"Could not parse move '{parsed_move}'. Use exact format: MOVE: <SAN or UCI>."
+                )
+            except Exception:
+                pass
         
         # Step 7: Final failure logging
         print(f"\n💥 FINAL RESULT: MOVE REJECTED")
