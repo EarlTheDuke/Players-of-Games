@@ -5,6 +5,7 @@ import random
 from logger import GameLogger
 from api_utils import get_api_function, extract_reasoning
 import config
+import time
 
 
 class BaseGame(ABC):
@@ -147,6 +148,7 @@ class BaseGame(ABC):
                     model_params = self.get_model_params() or {}
                 except Exception:
                     model_params = {}
+            start_ts = time.time()
             response = config['api_function'](
                 prompt,
                 config['api_key'],
@@ -154,6 +156,12 @@ class BaseGame(ABC):
                 temperature=model_params.get('temperature'),
                 max_tokens=model_params.get('max_tokens'),
             )
+            api_ms = int((time.time() - start_ts) * 1000)
+            try:
+                from debug_console import debug_log
+                debug_log(f"API Call: model={config['model']}, temp={model_params.get('temperature')}, max_tokens={model_params.get('max_tokens')}, latency_ms={api_ms}")
+            except Exception:
+                pass
             
             print(f"DEBUG: API response length: {len(response) if response else 0}")
             if response:
@@ -167,6 +175,11 @@ class BaseGame(ABC):
             # Parse the action from response
             action = self.parse_action_from_response(response)
             reasoning = extract_reasoning(response)
+            try:
+                from debug_console import debug_log
+                debug_log(f"Parsed action: {'<none>' if not action else action}; Reasoning len: {len(reasoning) if reasoning else 0}")
+            except Exception:
+                pass
             
             if not action:
                 return None, f"Could not parse action from response: {response[:100]}..."
