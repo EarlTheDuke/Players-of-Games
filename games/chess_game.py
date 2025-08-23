@@ -201,9 +201,36 @@ class ChessGame(BaseGame):
                 # Store move in SAN notation for PGN
                 san_move = self.board.san(move)
                 self.moves_san.append(san_move)
+                # Pre-move context for logging
+                prev_fullmove = self.board.fullmove_number
+                mover_color = 'White' if self.board.turn == chess.WHITE else 'Black'
+                uci_move = move.uci()
+                was_capture = self.board.is_capture(move)
+                baseline_eval = self._evaluate_material(self.board, self.board.turn)
                 # Apply the move
                 self.board.push(move)
+                after_check = self.board.is_check()
+                after_eval = self._evaluate_material(self.board, not self.board.turn)  # same perspective as mover
+                material_delta = after_eval - baseline_eval
+                after_fen = self.board.fen()
+                reply_count = len(list(self.board.legal_moves))
+                is_mate = self.board.is_checkmate()
+                is_stalemate = self.board.is_stalemate()
                 print(f"DEBUG: Move {action} applied successfully")
+                # Emit structured post-move block
+                try:
+                    self._log_block("MOVE APPLIED", [
+                        f"Turn: {prev_fullmove}, Player: {self.current_player} ({mover_color})",
+                        f"Move: {san_move} ({uci_move})",
+                        f"Capture: {was_capture}",
+                        f"Gave check: {after_check}",
+                        f"Material delta (self POV): {material_delta:+d}",
+                        f"Opponent replies available: {reply_count}",
+                        f"Checkmate: {is_mate}, Stalemate: {is_stalemate}",
+                        f"FEN: {after_fen}",
+                    ])
+                except Exception:
+                    pass
                 return True
             else:
                 print(f"DEBUG: Move {action} is not legal in current position")
