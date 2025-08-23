@@ -231,6 +231,12 @@ class BaseGame(ABC):
             pass
         
         for attempt in range(max_attempts):
+            # Surface attempt counters for debug context blocks
+            try:
+                setattr(self, '_attempt_max', max_attempts)
+                setattr(self, '_attempt_num', attempt + 1)
+            except Exception:
+                pass
             # Get move from AI
             action, reasoning = self.prompt_player()
             
@@ -287,6 +293,14 @@ class BaseGame(ABC):
                 try:
                     from debug_console import debug_log
                     debug_log(f"SUCCESS: Move {action} applied, switched to {self.current_player}")
+                    # Turn total timing if exposed by subclass
+                    try:
+                        if hasattr(self, '_turn_start_ts'):
+                            import time
+                            total_ms = int((time.time() - getattr(self, '_turn_start_ts')) * 1000)
+                            debug_log(f"TURN_TIMINGS: total_turn_ms={total_ms}, attempts={attempt+1}/{max_attempts}")
+                    except Exception:
+                        pass
                 except:
                     pass
                 return True

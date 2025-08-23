@@ -4,6 +4,8 @@ import chess.pgn
 from typing import List, Optional, Tuple
 import re
 import json
+import time
+import uuid
 from .base_game import BaseGame
 import sys
 import os
@@ -60,11 +62,39 @@ class ChessGame(BaseGame):
         except Exception:
             model_params = {}
         lines: list[str] = []
-        lines.append(f"Turn: {move_number}, Player: {player_name} ({color_name})")
+        # Pre-move flags and legal move breakdown
+        in_check = self.board.is_check()
+        try:
+            checkers = self._get_checking_pieces() if in_check else []
+        except Exception:
+            checkers = []
+        castling_before = f"W:K{int(self.board.has_kingside_castling_rights(chess.WHITE))}Q{int(self.board.has_queenside_castling_rights(chess.WHITE))} | B:K{int(self.board.has_kingside_castling_rights(chess.BLACK))}Q{int(self.board.has_queenside_castling_rights(chess.BLACK))}"
+        repetition = self.board.can_claim_threefold_repetition()
+        halfmove = self.board.halfmove_clock
+        legal_objs = list(self.board.legal_moves)
+        total_legal = len(legal_objs)
+        count_captures = sum(1 for m in legal_objs if self.board.is_capture(m))
+        count_checks = 0
+        count_promos = 0
+        count_castles = 0
+        for m in legal_objs[:100]:
+            try:
+                if m.promotion:
+                    count_promos += 1
+                if self.board.is_castling(m):
+                    count_castles += 1
+                self.board.push(m)
+                if self.board.is_check():
+                    count_checks += 1
+                self.board.pop()
+            except Exception:
+                pass
+        lines.append(f"Turn: {move_number}, Player: {player_name} ({color_name}), Turn ID: {getattr(self, '_turn_id', '')}")
         lines.append(f"Phase: {game_phase.upper()}, Opening: {opening_name}")
         lines.append(f"FEN: {current_fen}")
         lines.append("Board:\n" + current_board_display)
-        lines.append(f"Legal moves shown: {min(len(shown_moves), 20)} (of ~{len(shown_moves) if 'more' not in shown_moves[-1] else '20+'})")
+        shown_ct = min(len(shown_moves), 20)
+        lines.append(f"Legal moves shown: {shown_ct} of {total_legal} | breakdown: captures={count_captures}, checks={count_checks}, promos={count_promos}, castles={count_castles}")
         if previous_feedback_text.strip():
             lines.append("Feedback: " + previous_feedback_text.strip())
         if veto_text.strip():
@@ -74,6 +104,7 @@ class ChessGame(BaseGame):
                 lines.append(f"Phase stats: pieces={phase_info.get('piece_count')}, material_total={phase_info.get('total_material')}, material_balance={phase_info.get('material_balance'):+d}")
             except Exception:
                 pass
+        lines.append(f"Pre-move flags: in_check={in_check}, checkers={'; '.join(checkers) if checkers else 'none'}, castling_rights={castling_before}, repetition_claim={repetition}, halfmove_clock={halfmove}")
         if model_params:
             lines.append(f"Model params: temperature={model_params.get('temperature')}, max_tokens={model_params.get('max_tokens')}")
         self._log_block("TURN CONTEXT", lines)
@@ -207,8 +238,17 @@ class ChessGame(BaseGame):
                 uci_move = move.uci()
                 was_capture = self.board.is_capture(move)
                 baseline_eval = self._evaluate_material(self.board, self.board.turn)
+                moved_piece = self.board.piece_at(move.from_square).symbol() if self.board.piece_at(move.from_square) else '?'
+                captured_piece = None
                 # Apply the move
                 self.board.push(move)
+                try:
+                    # If capture, the captured piece type can be inferred by SAN or prior board state; using SAN marker 'x'
+                    if 'x' in san_move:
+                        captured_piece = 'captured'  # detailed type requires deeper diff; keep simple label
+                except Exception:
+                    pass
+                apply_start = time.time()
                 after_check = self.board.is_check()
                 after_eval = self._evaluate_material(self.board, not self.board.turn)  # same perspective as mover
                 material_delta = after_eval - baseline_eval
@@ -216,17 +256,23 @@ class ChessGame(BaseGame):
                 reply_count = len(list(self.board.legal_moves))
                 is_mate = self.board.is_checkmate()
                 is_stalemate = self.board.is_stalemate()
+                castling_after = f"W:K{int(self.board.has_kingside_castling_rights(chess.WHITE))}Q{int(self.board.has_queenside_castling_rights(chess.WHITE))} | B:K{int(self.board.has_kingside_castling_rights(chess.BLACK))}Q{int(self.board.has_queenside_castling_rights(chess.BLACK))}"
+                apply_ms = int((time.time() - apply_start) * 1000)
                 print(f"DEBUG: Move {action} applied successfully")
                 # Emit structured post-move block
                 try:
                     self._log_block("MOVE APPLIED", [
                         f"Turn: {prev_fullmove}, Player: {self.current_player} ({mover_color})",
                         f"Move: {san_move} ({uci_move})",
+                        f"Piece moved: {moved_piece}",
+                        f"Captured: {captured_piece if captured_piece else 'False'}",
                         f"Capture: {was_capture}",
                         f"Gave check: {after_check}",
                         f"Material delta (self POV): {material_delta:+d}",
                         f"Opponent replies available: {reply_count}",
                         f"Checkmate: {is_mate}, Stalemate: {is_stalemate}",
+                        f"Castling rights after: {castling_after}",
+                        f"Apply ms: {apply_ms}",
                         f"FEN: {after_fen}",
                     ])
                 except Exception:
@@ -422,6 +468,9 @@ class ChessGame(BaseGame):
         """Reset per-turn state before prompting the model."""
         try:
             self._vetoed_moves_this_turn = {}
+            # Per-turn identifiers and timers
+            self._turn_id = str(uuid.uuid4())
+            self._turn_start_ts = time.time()
         except Exception:
             pass
     
@@ -441,6 +490,7 @@ class ChessGame(BaseGame):
         parsed_move: Optional[str] = None
         raw_move: Optional[str] = None
         print(f"📝 AI Response (first 200 chars): {response[:200]}...")
+        parse_start = time.time()
         
         # 1a) Try to extract JSON {"move":"..."}
         try:
@@ -609,6 +659,7 @@ class ChessGame(BaseGame):
             print(f"   ✅ Move is legal on board: {is_legal}")
             
             if is_legal:
+                parse_ms = int((time.time() - parse_start) * 1000)
                 if not has_candidates:
                     print("⚠️ FORMAT WARNING: No CANDIDATES section present; accepting legal move but will warn in next prompt.")
                     try:
@@ -618,7 +669,7 @@ class ChessGame(BaseGame):
                 print(f"🎉 VALIDATION SUCCESS: Move '{parsed_move}' is valid!")
                 try:
                     from debug_console import debug_log
-                    debug_log(f"VALIDATION SUCCESS: {parsed_move} -> {move_obj}")
+                    debug_log(f"VALIDATION SUCCESS: {parsed_move} -> {move_obj}; parse_ms={parse_ms}")
                 except:
                     pass
                 # Emit a compact summary block for this validation
@@ -627,6 +678,7 @@ class ChessGame(BaseGame):
                     f"Player: {self.current_player}",
                     f"Proposed: {parsed_move} (parsed via {parsing_method})",
                     f"Legal: True",
+                    f"Parse ms: {parse_ms}",
                 ])
                 return parsed_move
             else:
