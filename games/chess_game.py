@@ -795,11 +795,18 @@ class ChessGame(BaseGame):
                     if cap_move in temp.legal_moves:
                         temp.push(cap_move)
                         delta_q = baseline - self._evaluate_material(temp, perspective)
-                        queen_sac = delta_q >= 7
+                        # Require a clearer large loss to mark as queen sac
+                        queen_sac = delta_q >= 8
                         temp.pop()
         except Exception:
             pass
-        return queen_sac or (worst_drop >= threshold)
+        # Slightly relax for checking queen moves: require larger worst_drop to veto
+        try:
+            is_queen_move = (self.board.piece_at(move.from_square) and self.board.piece_at(move.from_square).piece_type == chess.QUEEN)
+        except Exception:
+            is_queen_move = False
+        adjusted_threshold = threshold + 1 if is_queen_move else threshold
+        return queen_sac or (worst_drop >= adjusted_threshold)
 
     def _get_checking_pieces(self) -> List[str]:
         if not self.board.is_check():

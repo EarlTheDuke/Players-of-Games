@@ -58,7 +58,8 @@ class GameLogger:
         print(f"Move: {move}")
         print(f"Reasoning: {reasoning}")
         if not is_valid:
-            print("⚠️  Invalid move!")
+            # Messaging handled upstream; avoid misleading label here
+            print("⚠️  Move not accepted")
     
     def log_game_start(self, players: Dict[str, Dict], initial_state: str):
         """

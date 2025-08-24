@@ -230,7 +230,9 @@ class BaseGame(ABC):
         except:
             pass
         
-        for attempt in range(max_attempts):
+        attempt = 0
+        veto_retries = 0
+        while attempt < max_attempts:
             # Surface attempt counters for debug context blocks
             try:
                 setattr(self, '_attempt_max', max_attempts)
@@ -342,9 +344,9 @@ class BaseGame(ABC):
                     debug_log(f"Failed moves for {player_name}: {list(self.failed_moves[player_name])}")
                 except:
                     pass
-                # Do not consume attempt on veto; only count true invalids
+                # Do not consume attempt on veto; allow up to 2 veto retries
                 if vetoed:
-                    # If the model repeats the same vetoed move, allow only one retry
+                    veto_retries += 1
                     try:
                         last_veto_uci = getattr(self, '_last_vetoed_move_uci', '')
                         if last_veto_uci:
@@ -352,8 +354,35 @@ class BaseGame(ABC):
                             self._last_failure_reason[player_name] = "Previous attempt likely blundered material (>threshold)"
                     except Exception:
                         pass
+                    if veto_retries >= 2:
+                        print("DEBUG: Exceeded veto retries; using safe fallback")
+                        legal_actions = self.get_legal_actions()
+                        try:
+                            if hasattr(self, 'get_safe_fallback_action') and callable(getattr(self, 'get_safe_fallback_action')):
+                                fallback_move = self.get_safe_fallback_action()
+                            else:
+                                fallback_move = random.choice(legal_actions)
+                        except Exception:
+                            fallback_move = random.choice(legal_actions)
+                    
+                        print(f"DEBUG: Forcing fallback legal move: {fallback_move}")
+                        if self.validate_and_apply_action(fallback_move):
+                            self.logger.log_move(
+                                player=player_name,
+                                move=fallback_move,
+                                reasoning="Emergency fallback: safe legal move",
+                                game_state=self.get_state_text(),
+                                move_number=self.move_count,
+                                is_valid=True
+                            )
+                            self.next_player()
+                            return True
+                        return False
+                    # Try again without incrementing attempt
                     continue
-                if attempt == max_attempts - 1:
+                # Count only true invalids
+                attempt += 1
+                if attempt >= max_attempts:
                     # All attempts failed - this shouldn't happen with our fixes
                     self.logger.log_error(
                         "invalid_moves",
