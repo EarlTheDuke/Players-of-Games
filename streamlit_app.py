@@ -208,6 +208,8 @@ def main():
                     if len(st.session_state.debug_outputs) > 10:
                         st.session_state.debug_outputs = st.session_state.debug_outputs[-10:]
                     
+                    # Persist latest debug text for sidebar viewer
+                    st.session_state.latest_debug_output = debug_text
                     # Show debug output if we have it
                     if debug_text.strip():
                         # Add clear debug output button
@@ -216,16 +218,7 @@ def main():
                             if st.button("🗑️ Clear Debug Output", help="Clear all debug output to start fresh testing"):
                                 st.session_state.debug_outputs = []
                                 st.rerun()
-                        
-                        with st.expander("🔍 Debug Output (Move Validation Details)", expanded=not success):
-                            # Show debug output in a text area for easy copying
-                            st.text_area(
-                                "Full Debug Output - Select All (Ctrl+A) and Copy (Ctrl+C)",
-                                value=debug_text,
-                                height=300,
-                                key=f"main_debug_{game.move_count}",
-                                help="This is the complete debug output - select all and copy to share"
-                            )
+                        # Note: The sidebar contains an always-visible debug panel now
                             
                         # Also save to error logger if failed
                         if not success:
@@ -508,8 +501,8 @@ def main():
         except Exception as e:
             st.sidebar.error(f"Error log viewer failed: {e}")
     
-    # Debug output viewer - Always expanded for easy access
-    with st.sidebar.expander("🔍 Debug Output (Copy/Paste Here)", expanded=True):
+    # Debug output viewer - Always expanded and always present
+    with st.sidebar.expander("🔍 Debug Output (Move Validation Details)", expanded=True):
         # Add clear button at the top
         if st.button("🗑️ Clear All Debug Output", help="Clear all debug output for fresh testing", key="sidebar_clear_debug"):
             st.session_state.debug_outputs = []
@@ -531,6 +524,18 @@ def main():
             # Show recent button presses
             if hasattr(st.session_state, 'last_button_press'):
                 st.text(f"Last button: {st.session_state.last_button_press}")
+            
+            # Show latest complete debug output if available (always visible panel)
+            latest = st.session_state.get('latest_debug_output', '')
+            if latest:
+                st.text_area(
+                    "Latest Full Debug Output",
+                    value=latest,
+                    height=220,
+                    key="latest_full_debug_output",
+                    help="This is the latest complete debug output"
+                )
+                st.markdown("---")
             
             # Filter for failed moves only
             failed_debug_outputs = [d for d in debug_outputs if not d['success']]
