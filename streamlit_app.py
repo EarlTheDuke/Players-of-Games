@@ -107,6 +107,12 @@ def main():
             if 'game' in st.session_state:
                 del st.session_state.game
             st.session_state.game_started = True
+            # Clear debug buffers on new game
+            try:
+                st.session_state.debug_outputs = []
+                st.session_state.latest_debug_output = ""
+            except Exception:
+                pass
             st.rerun()
     
     with col2:
@@ -292,6 +298,16 @@ def main():
                 dbg_list = st.session_state.get('debug_outputs', [])
                 if dbg_list:
                     latest_main_debug = dbg_list[-1].get('debug_output', '')
+            # Header with clear button next to expander
+            top_col1, top_col2 = st.columns([4, 1])
+            with top_col2:
+                if st.button("🗑️ Clear", key="clear_main_debug_button", help="Clear the debug output panel"):
+                    try:
+                        st.session_state.debug_outputs = []
+                        st.session_state.latest_debug_output = ""
+                    except Exception:
+                        pass
+                    st.rerun()
             with st.expander("🔍 Debug Output (Move Validation Details)", expanded=True):
                 if latest_main_debug:
                     st.text_area(
