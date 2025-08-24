@@ -325,164 +325,62 @@ class ChessGame(BaseGame):
             return False
     
     def get_prompt(self) -> str:
-        """Generate a chess prompt for the current player."""
+        """Generate a minimal, state-only prompt to preserve freedom while ensuring integrity."""
+        prompt_start = time.time()
         current_color = self._get_current_player_color()
         color_name = "White" if current_color == chess.WHITE else "Black"
-        
-        # Log player and board turn, but do NOT auto-switch here
+
+        # Log player and board turn
         board_turn = "White" if self.board.turn == chess.WHITE else "Black"
         print(f"DEBUG: Player {self.current_player} ({color_name}) requesting move")
         print(f"DEBUG: Board expects {board_turn} to move")
-        if color_name != board_turn:
-            print(f"WARNING: Turn mismatch detected (player vs board). Will rely on reconcile_turn() before move.")
-        
-        legal_moves = self.get_legal_actions()
-        
-        # Show legal moves in a clear, comprehensive format for AI understanding
-        legal_moves_uci = legal_moves  # These are already UCI from get_legal_actions()
-        legal_moves_san = [self.board.san(chess.Move.from_uci(move)) for move in legal_moves_uci]
-        
-        # Group moves by type for better AI understanding
-        piece_moves = []
-        pawn_moves = []
-        
-        for uci, san in zip(legal_moves_uci, legal_moves_san):
-            if san[0].isupper() and san[0] in 'NBRQK':
-                # Piece moves (Knight, Bishop, Rook, Queen, King)
-                piece_moves.append(f"{san} ({uci})")
-            else:
-                # Pawn moves and castling
-                pawn_moves.append(f"{san} ({uci})")
-        
-        # Prefer to show captures first and expand if few total moves
-        captures = []
-        non_captures = []
-        for uci in legal_moves_uci:
-            mv = chess.Move.from_uci(uci)
-            (captures if self.board.is_capture(mv) else non_captures).append(uci)
-        shown_pairs = []
-        for uci in captures + non_captures:
-            san = self.board.san(chess.Move.from_uci(uci))
-            shown_pairs.append(f"{san} ({uci})")
-        if len(shown_pairs) <= 20:
-            shown_moves = shown_pairs
-        else:
-            shown_moves = shown_pairs[:20] + [f"... and {len(shown_pairs) - 20} more moves"]
-        
-        # Get fresh board state
+
+        # Core state
         current_fen = self.get_state_text()
-        current_board_display = self.get_state_display()
         move_number = self.board.fullmove_number
-        
-        # Check for failed moves to provide feedback to AI
-        failed_moves_text = ""
-        if hasattr(self, 'failed_moves') and self.current_player in self.failed_moves:
-            failed_moves_list = list(self.failed_moves[self.current_player])
-            if failed_moves_list:
-                failed_moves_text = f"\n⚠️  IMPORTANT: You previously tried these moves which failed validation: {', '.join(failed_moves_list)}. Please choose a DIFFERENT move from the legal moves list.\n"
-        # Include last failure reason if any
-        previous_feedback_text = ""
+        # Compact PGN tail (last few plies, no headers)
+        pgn_tail = self.get_pgn_history(include_headers=False, max_moves=6)
+
+        # Graduated scaffolding: include legal UCI only after parse failures
+        include_legal = False
         try:
             last_reason = self._last_failure_reason.get(self.current_player) if hasattr(self, '_last_failure_reason') else ""
-            if last_reason:
-                previous_feedback_text = f"Previous attempt failed because: {last_reason}. Choose differently.\n\n"
+            if last_reason and ("Could not parse move" in last_reason or "Respond with first line" in last_reason):
+                include_legal = True
         except Exception:
-            previous_feedback_text = ""
-        # Include per-turn vetoed moves (to avoid repeated blunders) - cap to 5 entries for brevity
-        veto_text = ""
-        try:
-            if getattr(self, '_vetoed_moves_this_turn', None):
-                veto_items = [(mv, cnt) for mv, cnt in self._vetoed_moves_this_turn.items() if cnt >= 1]
-                veto_items.sort(key=lambda x: -x[1])
-                if veto_items:
-                    limited = [f"{mv} (vetoed {cnt}x)" for mv, cnt in veto_items[:5]]
-                    veto_text = f"Do NOT play these moves this turn: {', '.join(limited)}.\n\n"
-        except Exception:
-            pass
-        
-        # Get PGN history and opening recognition
-        pgn_history = self.get_pgn_history(include_headers=True, max_moves=30)  # Last 30 moves for context
-        opening_name = self.recognize_opening()
-        
-        # PHASE-AWARE SYSTEM: Detect current game phase
-        game_phase, phase_info = self.detect_game_phase()
-        # Threat analysis injection
-        threats_text = self.get_threats()
-        self._cached_threats_text = threats_text
-        
-        # Debug: Log what we're showing the AI
-        print(f"DEBUG: Showing AI - FEN: {current_fen}")
-        print(f"DEBUG: Showing AI - Move #{move_number}, {color_name} to move")
-        print(f"DEBUG: Showing AI - Game Phase: {game_phase.upper()}")
-        print(f"DEBUG: Showing AI - Opening: {opening_name}")
-        print(f"DEBUG: Showing AI - Legal moves: {shown_moves[:5]}...")
-        print(f"DEBUG: PGN length: {len(pgn_history)} characters")
-        print(f"DEBUG: Phase Info - Pieces: {phase_info['piece_count']}, Material: {phase_info['total_material']}")
-        
+            include_legal = False
+
+        legal_moves_uci: list[str] = []
+        if include_legal:
+            legal_moves_uci = self.get_legal_actions()
+
+        # Build minimal prompt
+        state_lines = [
+            "{",
+            f"  \"turn\": \"{board_turn}\"",
+            f", \"move_number\": {move_number}",
+            f", \"fen\": \"{current_fen}\"",
+            f", \"pgn_tail\": \"{pgn_tail.replace('\\', '\\\\').replace('\"', '\\\"')}\"",
+        ]
+        if include_legal:
+            state_lines.append(f", \"legal_moves_uci\": {json.dumps(legal_moves_uci)}")
+        state_lines.append("}\n")
+
+        # Minimal protocol (no guidance)
+        protocol = "Respond with: MOVE: <UCI or SAN>\n"
+
+        minimal_prompt = "\n".join(["=== STATE ===", "".join(state_lines), protocol])
+
+        # Debug metrics
         try:
             from debug_console import debug_log
-            debug_log(f"Enhanced Prompt: {color_name} move #{move_number}, {len(shown_moves)} legal moves")
-            debug_log(f"Enhanced Prompt: PHASE={game_phase.upper()}, Opening={opening_name}, FEN={current_fen}")
-            debug_log(f"Enhanced Prompt: PGN history length={len(pgn_history)} chars")
-            debug_log(f"Phase Analysis: {phase_info['piece_count']} pieces, {phase_info['total_material']} material")
-        except:
-            pass
-        
-        # DYNAMIC PROMPT GENERATION based on game phase
-        if game_phase == 'opening':
-            enhanced_prompt = self.get_opening_prompt_template(
-                color_name, phase_info, shown_moves, failed_moves_text + previous_feedback_text + veto_text, 
-                pgn_history, opening_name, current_fen, current_board_display, move_number
-            )
-        elif game_phase == 'middlegame':
-            enhanced_prompt = self.get_middlegame_prompt_template(
-                color_name, phase_info, shown_moves, failed_moves_text + previous_feedback_text + veto_text,
-                pgn_history, opening_name, current_fen, current_board_display, move_number
-            )
-        else:  # endgame
-            enhanced_prompt = self.get_endgame_prompt_template(
-                color_name, phase_info, shown_moves, failed_moves_text + previous_feedback_text + veto_text,
-                pgn_history, opening_name, current_fen, current_board_display, move_number
-            )
-
-        # Emit a consolidated turn context block to the debug console
-        try:
-            self._log_turn_context(
-                player_name=self.current_player,
-                color_name=color_name,
-                move_number=move_number,
-                opening_name=opening_name,
-                current_fen=current_fen,
-                current_board_display=current_board_display,
-                game_phase=game_phase,
-                phase_info=phase_info,
-                shown_moves=shown_moves,
-                previous_feedback_text=previous_feedback_text,
-                veto_text=veto_text,
-            )
+            build_ms = int((time.time() - prompt_start) * 1000)
+            debug_log(f"Minimal Prompt: len={len(minimal_prompt)} chars, build_ms={build_ms}, include_legal={include_legal}")
+            print(f"DEBUG: Minimal prompt total length: {len(minimal_prompt)} characters")
         except Exception:
             pass
 
-        # Prepend board verification and immediate threats
-        verification = (
-            "=== BOARD VERIFICATION ===\n"
-            "Step 1: Confirm the position from FEN/ASCII. List your pieces explicitly. Use full phrases (e.g., 'White Queen at h5'); avoid bare coordinates like 'h5' alone. Do not assume extra pieces.\n\n"
-            "=== IMMEDIATE THREATS ===\n"
-            f"{threats_text if threats_text else 'No immediate threats.'}\n\n"
-            "Address all threats before planning.\n\n"
-            "OUTPUT CONTRACT (STRICT): On the FIRST line, output exactly one of the following forms: MOVE: <SAN or UCI>  OR  {\"move\":\"<SAN or UCI>\"}. After that, you may write REASONING and CANDIDATES.\n"
-        )
-        enhanced_prompt = verification + enhanced_prompt
-        
-        # Log final prompt details for monitoring
-        try:
-            from debug_console import debug_log
-            debug_log(f"Enhanced Prompt: Total length={len(enhanced_prompt)} chars")
-            print(f"DEBUG: Enhanced prompt total length: {len(enhanced_prompt)} characters")
-        except:
-            pass
-        
-        return enhanced_prompt
+        return minimal_prompt
 
     def reconcile_turn(self) -> None:
         """Ensure current_player matches board.turn. Do not modify board; only sync current_player_index."""
