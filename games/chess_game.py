@@ -774,6 +774,17 @@ class ChessGame(BaseGame):
         temp = self.board.copy()
         hanging_before = self._get_hanging_squares_for_current()
         temp.push(move)
+        # If our move immediately checkmates, never veto
+        try:
+            if temp.is_checkmate():
+                return False
+        except Exception:
+            pass
+        # Record if the move gives check to relax threshold for forcing moves
+        try:
+            gives_check = temp.is_check()
+        except Exception:
+            gives_check = False
         worst_drop = 0
         # Prioritize forcing replies first
         replies = list(temp.legal_moves)
@@ -818,12 +829,16 @@ class ChessGame(BaseGame):
                         temp.pop()
         except Exception:
             pass
-        # Slightly relax for checking queen moves: require larger worst_drop to veto
+        # Relax for forcing moves: bump threshold for queen moves and any checking move
         try:
             is_queen_move = (self.board.piece_at(move.from_square) and self.board.piece_at(move.from_square).piece_type == chess.QUEEN)
         except Exception:
             is_queen_move = False
-        adjusted_threshold = threshold + 1 if is_queen_move else threshold
+        adjusted_threshold = threshold
+        if is_queen_move:
+            adjusted_threshold += 1
+        if gives_check:
+            adjusted_threshold += 2
         return queen_sac or (worst_drop >= adjusted_threshold)
 
     def _get_checking_pieces(self) -> List[str]:
