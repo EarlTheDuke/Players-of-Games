@@ -155,8 +155,33 @@ def main():
     # Display game if it exists
     if 'game' in st.session_state:
         game = st.session_state.game
-        
-        # Make move if requested
+
+        # Always render the board FIRST so it remains visible during auto-play and while thinking
+        try:
+            player_names = {
+                'white': 'White (Grok)', 
+                'black': 'Black (Claude)'
+            }
+            last_move = None
+            if game.board.move_stack:
+                last_move = game.board.move_stack[-1]
+            board_html = chess_board_renderer.render_chess_board_with_info(
+                game.board,
+                player_names,
+                highlight_squares=None,
+                last_move=last_move
+            )
+            st.components.v1.html(board_html, height=520, width=660)
+        except Exception as e:
+            st.error(f"❌ Board display error: {e}")
+            try:
+                simple_board_html = chess_board_renderer.render_chess_board(game.board)
+                st.components.v1.html(simple_board_html, height=400, width=400)
+            except Exception as e2:
+                st.error(f"❌ Simple board error: {e2}")
+                st.code(str(game.board))
+
+        # Make move if requested (rendered after the board so the board stays on screen)
         if st.session_state.get('make_move', False):
             st.session_state.make_move = False
             
@@ -258,37 +283,7 @@ def main():
                     "error": str(e)
                 }, e)
         
-        # Display board FIRST so user can see current position
-        # Then handle auto play logic after board is rendered
-        try:
-            # Create proper player mapping for the renderer (it expects 'white' and 'black' keys)
-            player_names = {
-                'white': 'White (Grok)', 
-                'black': 'Black (Claude)'
-            }
-            
-            # Get the last move for highlighting
-            last_move = None
-            if game.board.move_stack:  # Check if any moves have been made
-                last_move = game.board.move_stack[-1]  # Get the most recent move
-            
-            board_html = chess_board_renderer.render_chess_board_with_info(
-                game.board, 
-                player_names,
-                highlight_squares=None,
-                last_move=last_move
-            )
-            st.components.v1.html(board_html, height=520, width=660)
-        except Exception as e:
-            st.error(f"❌ Board display error: {e}")
-            # Fallback to simple board renderer
-            try:
-                simple_board_html = chess_board_renderer.render_chess_board(game.board)
-                st.components.v1.html(simple_board_html, height=400, width=400)
-            except Exception as e2:
-                st.error(f"❌ Simple board error: {e2}")
-                # Final fallback to text display
-                st.code(str(game.board))
+        # Board already rendered above
         
         # Always-visible main page debug output panel
         try:
@@ -402,7 +397,15 @@ def main():
                                     player_style = "color: #A569BD;"  # Purple for Claude
                                 
                                 # Create an expandable section for each move
-                                with st.expander(f"{status} Move {move_num} - {player_color} {player_name}: {move} ({time_str})", expanded=(move_num == len(log_entries))):
+                                # Show veto label for non-accepted moves if available
+                                veto_label = ""
+                                try:
+                                    # Heuristic: if the move was not valid, label as veto/policy
+                                    if not entry.get('is_valid', True):
+                                        veto_label = " (vetoed policy)"
+                                except Exception:
+                                    veto_label = ""
+                                with st.expander(f"{status} Move {move_num} - {player_color} {player_name}: {move}{veto_label} ({time_str})", expanded=(move_num == len(log_entries))):
                                     # Move details in a nice format
                                     col1, col2 = st.columns([1, 3])
                                     
