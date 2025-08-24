@@ -89,7 +89,9 @@ class ChessGame(BaseGame):
                 self.board.pop()
             except Exception:
                 pass
-        lines.append(f"Turn: {move_number}, Player: {player_name} ({color_name}), Turn ID: {getattr(self, '_turn_id', '')}")
+        attempt_num = getattr(self, '_attempt_num', 0)
+        attempt_max = getattr(self, '_attempt_max', 0)
+        lines.append(f"Turn: {move_number}, Player: {player_name} ({color_name}), Turn ID: {getattr(self, '_turn_id', '')}, Attempt: {attempt_num}/{attempt_max}")
         lines.append(f"Phase: {game_phase.upper()}, Opening: {opening_name}")
         lines.append(f"FEN: {current_fen}")
         lines.append("Board:\n" + current_board_display)
@@ -108,6 +110,37 @@ class ChessGame(BaseGame):
         if model_params:
             lines.append(f"Model params: temperature={model_params.get('temperature')}, max_tokens={model_params.get('max_tokens')}")
         self._log_block("TURN CONTEXT", lines)
+        # JSON mirror payload for analytics
+        try:
+            from debug_console import debug_log
+            payload = {
+                "turn": move_number,
+                "turn_id": getattr(self, "_turn_id", ""),
+                "attempt": attempt_num,
+                "attempt_max": attempt_max,
+                "player": player_name,
+                "color": color_name,
+                "phase": game_phase,
+                "opening": opening_name,
+                "fen": current_fen,
+                "legal_counts": {
+                    "total": total_legal,
+                    "captures": count_captures,
+                    "checks": count_checks,
+                    "promotions": count_promos,
+                    "castles": count_castles,
+                },
+                "premove_flags": {
+                    "in_check": in_check,
+                    "checkers": checkers,
+                    "castling_rights": castling_before,
+                    "repetition_claim": repetition,
+                    "halfmove_clock": halfmove,
+                },
+            }
+            debug_log(f"TURN_CONTEXT_JSON: {json.dumps(payload, ensure_ascii=False)}")
+        except Exception:
+            pass
 
     def get_game_name(self) -> str:
         """Return the name of the game."""
@@ -240,6 +273,8 @@ class ChessGame(BaseGame):
                 baseline_eval = self._evaluate_material(self.board, self.board.turn)
                 moved_piece = self.board.piece_at(move.from_square).symbol() if self.board.piece_at(move.from_square) else '?'
                 captured_piece = None
+                # Start apply timer before pushing the move
+                apply_start = time.perf_counter()
                 # Apply the move
                 self.board.push(move)
                 try:
@@ -248,7 +283,6 @@ class ChessGame(BaseGame):
                         captured_piece = 'captured'  # detailed type requires deeper diff; keep simple label
                 except Exception:
                     pass
-                apply_start = time.time()
                 after_check = self.board.is_check()
                 after_eval = self._evaluate_material(self.board, not self.board.turn)  # same perspective as mover
                 material_delta = after_eval - baseline_eval
@@ -257,7 +291,7 @@ class ChessGame(BaseGame):
                 is_mate = self.board.is_checkmate()
                 is_stalemate = self.board.is_stalemate()
                 castling_after = f"W:K{int(self.board.has_kingside_castling_rights(chess.WHITE))}Q{int(self.board.has_queenside_castling_rights(chess.WHITE))} | B:K{int(self.board.has_kingside_castling_rights(chess.BLACK))}Q{int(self.board.has_queenside_castling_rights(chess.BLACK))}"
-                apply_ms = int((time.time() - apply_start) * 1000)
+                apply_ms = int((time.perf_counter() - apply_start) * 1000)
                 print(f"DEBUG: Move {action} applied successfully")
                 # Emit structured post-move block
                 try:
@@ -491,6 +525,12 @@ class ChessGame(BaseGame):
         raw_move: Optional[str] = None
         print(f"📝 AI Response (first 200 chars): {response[:200]}...")
         parse_start = time.time()
+        # Contract/compliance flags
+        try:
+            first_line = response.splitlines()[0].strip() if response else ""
+            first_line_is_move = bool(re.match(r"^(MOVE\s*:|\{\s*\"?move\"?\s*:)", first_line, re.IGNORECASE))
+        except Exception:
+            first_line_is_move = False
         
         # 1a) Try to extract JSON {"move":"..."}
         try:
@@ -559,6 +599,24 @@ class ChessGame(BaseGame):
         
         print(f"   SAN format: {legal_moves_san}")
         print(f"   SAN lowercase: {[san.lower() for san in legal_moves_san]}")
+        # Candidate extraction (best-effort from response text)
+        candidates: list[str] = []
+        try:
+            scope = response
+            cand_section = re.search(r"CANDIDATES\s*:\s*([\s\S]+?)(?:\n\s*(MOVE\s*:|REASONING\s*:)|$)", response, re.IGNORECASE)
+            if cand_section:
+                scope = cand_section.group(1)
+            seen = set()
+            for san in legal_moves_san:
+                if san in seen:
+                    continue
+                if re.search(rf"(?<![A-Za-z0-9_]){re.escape(san)}(?![A-Za-z0-9_])", scope):
+                    candidates.append(san)
+                    seen.add(san)
+                    if len(candidates) >= 3:
+                        break
+        except Exception:
+            candidates = []
         
         # Step 4: Test the parsed move against legal moves
         if not parsed_move:
@@ -669,7 +727,28 @@ class ChessGame(BaseGame):
                 print(f"🎉 VALIDATION SUCCESS: Move '{parsed_move}' is valid!")
                 try:
                     from debug_console import debug_log
-                    debug_log(f"VALIDATION SUCCESS: {parsed_move} -> {move_obj}; parse_ms={parse_ms}")
+                    # Reasoning length
+                    reasoning_chars = 0
+                    try:
+                        m = re.search(r"REASONING\s*:\s*([\s\S]+)$", response, re.IGNORECASE)
+                        if m:
+                            reasoning_chars = len(m.group(1).strip())
+                    except Exception:
+                        pass
+                    debug_log(f"VALIDATION SUCCESS: {parsed_move} -> {move_obj}; parse_ms={parse_ms}; first_line_is_move={first_line_is_move}; has_candidates={has_candidates}; reasoning_chars={reasoning_chars}; candidates={candidates}")
+                    # JSON mirror
+                    payload = {
+                        "turn": self.board.fullmove_number,
+                        "player": self.current_player,
+                        "proposed": parsed_move,
+                        "parsed_via": parsing_method,
+                        "legal": True,
+                        "parse_ms": parse_ms,
+                        "first_line_is_move": first_line_is_move,
+                        "has_candidates": bool(has_candidates),
+                        "candidates": candidates,
+                    }
+                    debug_log(f"MOVE_VALIDATION_JSON: {json.dumps(payload, ensure_ascii=False)}")
                 except:
                     pass
                 # Emit a compact summary block for this validation
@@ -678,6 +757,8 @@ class ChessGame(BaseGame):
                     f"Player: {self.current_player}",
                     f"Proposed: {parsed_move} (parsed via {parsing_method})",
                     f"Legal: True",
+                    f"Contract: first_line_is_move={first_line_is_move}, has_candidates={has_candidates}",
+                    f"Candidates: {', '.join(candidates) if candidates else 'n/a'}",
                     f"Parse ms: {parse_ms}",
                 ])
                 return parsed_move
