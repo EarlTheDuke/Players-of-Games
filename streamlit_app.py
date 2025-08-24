@@ -284,6 +284,28 @@ def main():
                 # Final fallback to text display
                 st.code(str(game.board))
         
+        # Always-visible main page debug output panel
+        try:
+            latest_main_debug = st.session_state.get('latest_debug_output', '')
+            if not latest_main_debug:
+                # Fallback to most recent entry in session debug_outputs
+                dbg_list = st.session_state.get('debug_outputs', [])
+                if dbg_list:
+                    latest_main_debug = dbg_list[-1].get('debug_output', '')
+            with st.expander("🔍 Debug Output (Move Validation Details)", expanded=True):
+                if latest_main_debug:
+                    st.text_area(
+                        "Full Debug Output - Select All (Ctrl+A) and Copy (Ctrl+C)",
+                        value=latest_main_debug,
+                        height=300,
+                        key=f"main_debug_always_{game.move_count}",
+                        help="Complete debug output for the latest move"
+                    )
+                else:
+                    st.info("No debug output yet. Click 'Next Move' to generate debug details.")
+        except Exception:
+            pass
+        
         # Game info
         st.subheader("📊 Game Information")
         col1, col2, col3 = st.columns(3)
