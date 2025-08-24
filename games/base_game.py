@@ -366,7 +366,17 @@ class BaseGame(ABC):
                             fallback_move = random.choice(legal_actions)
                     
                         print(f"DEBUG: Forcing fallback legal move: {fallback_move}")
-                        if self.validate_and_apply_action(fallback_move):
+                        # Bypass blunder veto exactly once for this forced fallback
+                        try:
+                            setattr(self, '_force_apply_once', fallback_move)
+                        except Exception:
+                            pass
+                        applied = self.validate_and_apply_action(fallback_move)
+                        try:
+                            setattr(self, '_force_apply_once', False)
+                        except Exception:
+                            pass
+                        if applied:
                             self.logger.log_move(
                                 player=player_name,
                                 move=fallback_move,

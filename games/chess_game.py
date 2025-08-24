@@ -236,10 +236,11 @@ class ChessGame(BaseGame):
                 return False
             
             # Debug logging
+            legal_list = list(self.board.legal_moves)
             print(f"DEBUG: Attempting move {action} for {self.current_player}")
             print(f"DEBUG: Current turn: {'White' if self.board.turn == chess.WHITE else 'Black'}")
-            print(f"DEBUG: Move legal: {move in self.board.legal_moves}")
-            print(f"DEBUG: Legal moves: {[str(m) for m in list(self.board.legal_moves)[:10]]}...")
+            print(f"DEBUG: Move legal: {move in legal_list}")
+            print(f"DEBUG: Legal moves: {[str(m) for m in legal_list[:10]]}...")
             
             try:
                 from debug_console import debug_log
@@ -249,8 +250,16 @@ class ChessGame(BaseGame):
                 pass
             
             # Optional lightweight blunder check before applying
-            if move in self.board.legal_moves:
-                if self._would_be_gross_blunder(move):
+            if move in legal_list:
+                # Skip blunder veto if there is only one legal move or if a forced-apply flag is set (e.g., emergency fallback)
+                skip_blunder = False
+                try:
+                    forced = getattr(self, '_force_apply_once', False)
+                    if forced is True or forced == action or (hasattr(move, 'uci') and forced == move.uci()):
+                        skip_blunder = True
+                except Exception:
+                    skip_blunder = False
+                if len(legal_list) > 1 and not skip_blunder and self._would_be_gross_blunder(move):
                     print("DEBUG: Potential blunder detected; rejecting move for retry")
                     try:
                         self._last_failure_reason[self.current_player] = "Previous attempt likely blundered material (>threshold)"
@@ -358,6 +367,15 @@ class ChessGame(BaseGame):
         legal_moves_uci: list[str] = []
         if include_legal:
             legal_moves_uci = self.get_legal_actions()
+            # If avoid list would eliminate all choices, drop avoid list for this prompt
+            try:
+                if getattr(self, '_vetoed_moves_this_turn', None):
+                    avoid_set = set(self._vetoed_moves_this_turn.keys())
+                    if set(legal_moves_uci).issubset(avoid_set):
+                        # keep include_legal but do not send avoid list this time
+                        self._vetoed_moves_this_turn = {}
+            except Exception:
+                pass
         # Provide neutral avoid list after veto(s) this turn
         avoid_moves: list[str] = []
         try:
