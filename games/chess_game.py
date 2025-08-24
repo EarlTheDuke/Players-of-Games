@@ -944,6 +944,8 @@ class ChessGame(BaseGame):
         phase, _ = self.detect_game_phase()
         return 5 if phase == 'endgame' else 3
 
+    # Removed self-consistency sampling helpers; keeping minimal single-decision flow
+
     def get_safe_fallback_action(self) -> str:
         # Rank legal moves by worst-case eval vs forcing replies; skip per-turn vetoed moves
         legal = list(self.board.legal_moves)

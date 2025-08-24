@@ -239,7 +239,7 @@ class BaseGame(ABC):
                 setattr(self, '_attempt_num', attempt + 1)
             except Exception:
                 pass
-            # Get move from AI
+            # Get move from AI (single sample)
             action, reasoning = self.prompt_player()
             
             if action is None:
