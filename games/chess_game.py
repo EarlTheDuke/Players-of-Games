@@ -41,6 +41,10 @@ class ChessGame(BaseGame):
         self._cached_threats_text: Optional[str] = None
         # Per-turn veto tracking to avoid repetition loops
         self._vetoed_moves_this_turn: dict[str, int] = {}
+        # Per-turn static avoid moves (e.g., repetition avoidance); merged into prompt avoid list
+        self._avoid_moves_this_turn: set[str] = set()
+        # Repetition detection flag for prompt scaffolding
+        self._repetition_detected_this_turn: bool = False
     
     def _log_block(self, title: str, lines: list[str]) -> None:
         """Utility to emit a single multi-line debug block to the debug console."""
@@ -354,14 +358,19 @@ class ChessGame(BaseGame):
         # Compact PGN tail (last few plies, no headers)
         pgn_tail = self.get_pgn_history(include_headers=False, max_moves=6)
 
-        # Graduated scaffolding: include legal UCI only after parse failures or veto
+        # Graduated scaffolding: include legal UCI only after parse failures, veto, or repetition detection
         include_legal = False
         try:
             last_reason = self._last_failure_reason.get(self.current_player) if hasattr(self, '_last_failure_reason') else ""
-            if last_reason and ("Could not parse move" in last_reason or "Respond with first line" in last_reason or "blundered material" in last_reason):
+            if last_reason and ("Could not parse move" in last_reason or "Respond with first line" in last_reason or "blundered material" in last_reason or "repetition" in last_reason):
                 include_legal = True
         except Exception:
             include_legal = False
+        try:
+            if getattr(self, '_repetition_detected_this_turn', False):
+                include_legal = True
+        except Exception:
+            pass
 
         legal_moves_uci: list[str] = []
         if include_legal:
@@ -378,8 +387,12 @@ class ChessGame(BaseGame):
         # Provide neutral avoid list after veto(s) this turn
         avoid_moves: list[str] = []
         try:
+            avoid_set: set[str] = set()
             if getattr(self, '_vetoed_moves_this_turn', None):
-                avoid_moves = list(self._vetoed_moves_this_turn.keys())
+                avoid_set |= set(self._vetoed_moves_this_turn.keys())
+            if getattr(self, '_avoid_moves_this_turn', None):
+                avoid_set |= set(self._avoid_moves_this_turn)
+            avoid_moves = list(avoid_set)
         except Exception:
             avoid_moves = []
 
@@ -431,9 +444,30 @@ class ChessGame(BaseGame):
         """Reset per-turn state before prompting the model."""
         try:
             self._vetoed_moves_this_turn = {}
+            self._avoid_moves_this_turn = set()
+            self._repetition_detected_this_turn = False
             # Per-turn identifiers and timers
             self._turn_id = str(uuid.uuid4())
             self._turn_start_ts = time.time()
+            # Simple oscillation detection: if last two plies repeat previous two, avoid repeating our last move
+            ms = self.board.move_stack
+            if len(ms) >= 4:
+                if ms[-1] == ms[-3] and ms[-2] == ms[-4]:
+                    # It's an ABAB loop; add our previous move (two plies ago) to avoid list
+                    try:
+                        self._avoid_moves_this_turn.add(ms[-2].uci())
+                    except Exception:
+                        pass
+                    self._repetition_detected_this_turn = True
+            # Additionally, if we can claim threefold repetition, hint legal moves to help break it
+            try:
+                if self.board.can_claim_threefold_repetition():
+                    self._repetition_detected_this_turn = True
+                    # Soft nudge via last_failure_reason to enable legal list in prompt builder
+                    if hasattr(self, '_last_failure_reason'):
+                        self._last_failure_reason[self.current_player] = "Potential repetition detected"
+            except Exception:
+                pass
         except Exception:
             pass
     
