@@ -353,19 +353,16 @@ def get_api_function(model_name: str):
 
 def extract_reasoning(response: str) -> str:
     """
-    Extract reasoning from AI response.
-    
-    Args:
-        response: The AI response text
-    
-    Returns:
-        Reasoning text or full response if no specific reasoning found
+    Extract multi-line reasoning from AI response up to the next MOVE: line.
+    Falls back to whole response if no explicit REASONING: section is found.
     """
     if not response:
         return "No response received"
-    
-    reasoning_match = re.search(r'REASONING:\s*(.*?)(?:\n|$)', response, re.IGNORECASE | re.DOTALL)
-    if reasoning_match:
-        return reasoning_match.group(1).strip()
-    
+
+    # Capture everything after REASONING: up to a line that starts with MOVE:
+    # Use DOTALL and non-greedy up to MOVE: or end of string
+    m = re.search(r'REASONING\s*:\s*([\s\S]*?)(?:\n\s*MOVE\s*:|$)', response, re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+
     return response.strip()

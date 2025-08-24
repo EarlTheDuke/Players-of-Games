@@ -13,6 +13,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from api_utils import parse_chess_move
 import io
+import random
 
 
 class ChessGame(BaseGame):
@@ -45,6 +46,8 @@ class ChessGame(BaseGame):
         self._avoid_moves_this_turn: set[str] = set()
         # Repetition detection flag for prompt scaffolding
         self._repetition_detected_this_turn: bool = False
+        # Last blunder analysis details for feedback
+        self._last_blunder_info: Optional[dict] = None
     
     def _log_block(self, title: str, lines: list[str]) -> None:
         """Utility to emit a single multi-line debug block to the debug console."""
@@ -265,7 +268,18 @@ class ChessGame(BaseGame):
                 if len(legal_list) > 1 and not skip_blunder and self._would_be_gross_blunder(move):
                     print("DEBUG: Potential blunder detected; rejecting move for retry")
                     try:
-                        self._last_failure_reason[self.current_player] = "Previous attempt likely blundered material (>threshold)"
+                        # Compose detailed failure message
+                        detail = ""
+                        try:
+                            if isinstance(self._last_blunder_info, dict):
+                                bi = self._last_blunder_info
+                                worst = bi.get("worst_drop")
+                                thr = bi.get("threshold")
+                                wrep = bi.get("worst_reply")
+                                detail = f" (worst-case −{worst} vs threshold {thr}{'; opponent reply ' + wrep if wrep else ''})"
+                        except Exception:
+                            detail = ""
+                        self._last_failure_reason[self.current_player] = f"Previous attempt likely blundered material{detail}."
                         # Mark to skip tracking as failed repetition; this is a veto, not illegal
                         setattr(self, '_skip_track_failed', True)
                         # Track per-turn veto count
@@ -310,6 +324,22 @@ class ChessGame(BaseGame):
                 apply_ms_val = (time.perf_counter() - apply_start) * 1000.0
                 apply_ms = max(0.1, round(apply_ms_val, 1))
                 print(f"DEBUG: Move {action} applied successfully")
+                # Expose move metadata for logger
+                try:
+                    self._last_move_metadata = {
+                        "san": san_move,
+                        "uci": uci_move,
+                        "piece_moved": moved_piece,
+                        "was_capture": was_capture,
+                        "gave_check": after_check,
+                        "material_delta": material_delta,
+                        "opponent_reply_count": reply_count,
+                        "is_checkmate": is_mate,
+                        "is_stalemate": is_stalemate,
+                        "post_fen": after_fen,
+                    }
+                except Exception:
+                    pass
                 # Emit structured post-move block
                 try:
                     self._log_block("MOVE APPLIED", [
@@ -333,6 +363,11 @@ class ChessGame(BaseGame):
                 print(f"DEBUG: Move {action} is not legal in current position")
                 try:
                     self._last_failure_reason[self.current_player] = f"Move '{action}' is not legal in this position"
+                    # Expose invalid attempt metadata
+                    self._last_move_metadata = {
+                        "invalid": True,
+                        "failure_reason": self._last_failure_reason.get(self.current_player, ""),
+                    }
                 except Exception:
                     pass
                 return False
@@ -342,7 +377,7 @@ class ChessGame(BaseGame):
             return False
     
     def get_prompt(self) -> str:
-        """Generate a minimal, state-only prompt to preserve freedom while ensuring integrity."""
+        """Generate a structured, phase-aware prompt with guidance, insights, and sampled legal moves."""
         prompt_start = time.time()
         current_color = self._get_current_player_color()
         color_name = "White" if current_color == chess.WHITE else "Black"
@@ -355,36 +390,58 @@ class ChessGame(BaseGame):
         # Core state
         current_fen = self.get_state_text()
         move_number = self.board.fullmove_number
-        # Compact PGN tail (last few plies, no headers)
         pgn_tail = self.get_pgn_history(include_headers=False, max_moves=6)
+        last_san = self.moves_san[-1] if self.moves_san else "(start)"
 
-        # Graduated scaffolding: include legal UCI only after parse failures, veto, or repetition detection
-        include_legal = False
-        try:
-            last_reason = self._last_failure_reason.get(self.current_player) if hasattr(self, '_last_failure_reason') else ""
-            if last_reason and ("Could not parse move" in last_reason or "Respond with first line" in last_reason or "blundered material" in last_reason or "repetition" in last_reason):
-                include_legal = True
-        except Exception:
-            include_legal = False
-        try:
-            if getattr(self, '_repetition_detected_this_turn', False):
-                include_legal = True
-        except Exception:
-            pass
+        # Phase and opening
+        phase, phase_info = self.detect_game_phase()
+        opening_name = self.recognize_opening()
 
-        legal_moves_uci: list[str] = []
-        if include_legal:
-            legal_moves_uci = self.get_legal_actions()
-            # If avoid list would eliminate all choices, drop avoid list for this prompt
-            try:
-                if getattr(self, '_vetoed_moves_this_turn', None):
-                    avoid_set = set(self._vetoed_moves_this_turn.keys())
-                    if set(legal_moves_uci).issubset(avoid_set):
-                        # keep include_legal but do not send avoid list this time
-                        self._vetoed_moves_this_turn = {}
-            except Exception:
-                pass
-        # Provide neutral avoid list after veto(s) this turn
+        # Strategy guide per phase
+        if phase == 'opening':
+            strategy_guide = (
+                "Opening principles: Develop pieces quickly, control the center (e4/d4/e5/d5), "
+                "ensure king safety (consider castling), and avoid early queen sorties or loose pawn moves."
+            )
+        elif phase == 'endgame':
+            strategy_guide = (
+                "Endgame principles: Activate the king, create and push passed pawns, "
+                "use opposition and triangulation, and avoid stalemate tricks."
+            )
+        else:
+            strategy_guide = (
+                "Middlegame principles: Improve worst-placed piece, coordinate forces, "
+                "calculate tactics (pins, forks, discovered attacks), and evaluate trades."
+            )
+        if self.board.is_check():
+            strategy_guide += " You are in check: consider only moves that resolve the check (block, capture, or move the king)."
+
+        # Position insights
+        threats_text = self.get_threats()
+        analysis = self.get_position_analysis()
+        mat_balance = analysis.get("material_balance", {}).get("balance", 0)
+        center = analysis.get("center_control", {})
+        center_summary = f"center control W:{center.get('white_center_control', 0)} B:{center.get('black_center_control', 0)}"
+
+        # Legal moves sampling (always provide subset; expand sample after veto)
+        all_legal_uci: list[str] = self.get_legal_actions()
+        prior_veto = False
+        try:
+            prior_veto = bool(getattr(self, '_vetoed_moves_this_turn', {})) or ('blunder' in (previous_feedback or '').lower())
+        except Exception:
+            prior_veto = False
+        sample_upper_default = 16 if len(all_legal_uci) >= 12 else len(all_legal_uci)
+        sample_lower_default = min(12, sample_upper_default)
+        if prior_veto:
+            sample_upper = min(24, len(all_legal_uci))
+            sample_lower = min(16, sample_upper)
+        else:
+            sample_upper = sample_upper_default
+            sample_lower = sample_lower_default
+        k = sample_upper if (sample_lower == 0) else random.randint(sample_lower, sample_upper)
+        shown_moves = random.sample(all_legal_uci, k) if all_legal_uci and k > 0 and len(all_legal_uci) >= k else all_legal_uci
+
+        # Avoid moves list (vetoes or repetition-avoidance)
         avoid_moves: list[str] = []
         try:
             avoid_set: set[str] = set()
@@ -396,35 +453,115 @@ class ChessGame(BaseGame):
         except Exception:
             avoid_moves = []
 
-        # Build minimal prompt
-        state_lines = [
+        # Previous attempt feedback
+        previous_feedback = ""
+        try:
+            previous_feedback = self._last_failure_reason.get(self.current_player, "")
+        except Exception:
+            previous_feedback = ""
+
+        # One-line history summary
+        mat_tag = f"material {'+' if mat_balance>0 else ''}{mat_balance}" if mat_balance != 0 else "material equal"
+        dev = phase_info.get('developed_pieces', None)
+        history_summary = f"Phase: {phase}; Opening: {opening_name}; {mat_tag}; developed_pieces={dev}"
+
+        # Turn context debug block
+        try:
+            veto_text = ", ".join(avoid_moves[:5]) if avoid_moves else ""
+            self._log_turn_context(
+                player_name=self.current_player,
+                color_name=color_name,
+                move_number=move_number,
+                opening_name=opening_name,
+                current_fen=current_fen,
+                current_board_display=self.get_state_display(),
+                game_phase=phase,
+                phase_info=phase_info,
+                shown_moves=shown_moves,
+                previous_feedback_text=previous_feedback or "",
+                veto_text=veto_text,
+            )
+        except Exception:
+            pass
+
+        # Build structured prompt
+        state_json_lines = [
             "{",
             f"  \"turn\": \"{board_turn}\"",
             f", \"move_number\": {move_number}",
             f", \"fen\": \"{current_fen}\"",
             f", \"pgn_tail\": \"{pgn_tail.replace('\\', '\\\\').replace('\"', '\\\"')}\"",
+            f", \"last_move_san\": \"{last_san.replace('\\', '\\\\').replace('\"', '\\\"')}\"",
+            f", \"opening\": \"{opening_name}\"",
+            f", \"phase\": \"{phase}\"",
+            f", \"legal_moves_sample\": {json.dumps(shown_moves)}",
         ]
-        if include_legal:
-            state_lines.append(f", \"legal_moves_uci\": {json.dumps(legal_moves_uci)}")
         if avoid_moves:
-            state_lines.append(f", \"avoid_moves\": {json.dumps(avoid_moves)}")
-        state_lines.append("}\n")
+            state_json_lines.append(f", \"avoid_moves\": {json.dumps(avoid_moves)}")
+        state_json_lines.append("}")
 
-        # Minimal protocol (no guidance)
-        protocol = "Respond with: MOVE: <UCI or SAN>\n"
+        guide_section = (
+            "Consider the following strategy guide for this phase:\n"
+            f"- {strategy_guide}\n"
+            "- Prefer moves that improve piece activity and king safety.\n"
+            "- Calculate 1-2 moves ahead for opponent replies to avoid blunders."
+        )
 
-        minimal_prompt = "\n".join(["=== STATE ===", "".join(state_lines), protocol])
+        insights_section = (
+            "Key position insights:\n"
+            f"THREATS: {threats_text}\n"
+            f"EVAL_HINTS: {mat_tag}; {center_summary}"
+        )
+
+        previous_section = (f"Previous attempt feedback: {previous_feedback}\n" if previous_feedback else "")
+
+        # Safe suggestions after a veto or explicit failure feedback
+        safe_suggestions: list[str] = []
+        if prior_veto:
+            try:
+                safe_suggestions = self.get_safe_candidates(limit=3)
+            except Exception:
+                safe_suggestions = []
+
+        options_instruction = (
+            "Choose your move from the provided legal move sample or propose another move if you believe it is superior, "
+            "but ensure it is legal in the current position. Prefer SAN or UCI. If uncertain, consider SAFE_SUGGESTIONS."
+        )
+
+        protocol_section = (
+            "Respond with exactly two lines:\n"
+            "REASONING: <concise step-by-step analysis>\n"
+            "MOVE: <SAN or UCI>"
+        )
+
+        prompt_parts = [
+            "=== STATE ===",
+            "".join(state_json_lines),
+            "\n=== STRATEGY_GUIDE ===",
+            guide_section,
+            "\n=== POSITION_INSIGHTS ===",
+            insights_section,
+            "\n=== GAME_HISTORY_SUMMARY ===",
+            history_summary,
+            ("\n=== SAFE_SUGGESTIONS ===\n" + ", ".join(safe_suggestions)) if safe_suggestions else "",
+            "\n=== OPTIONS ===",
+            options_instruction,
+            "\n=== PROTOCOL ===",
+            protocol_section,
+        ]
+
+        final_prompt = "\n".join(prompt_parts)
 
         # Debug metrics
         try:
             from debug_console import debug_log
             build_ms = int((time.time() - prompt_start) * 1000)
-            debug_log(f"Minimal Prompt: len={len(minimal_prompt)} chars, build_ms={build_ms}, include_legal={include_legal}")
-            print(f"DEBUG: Minimal prompt total length: {len(minimal_prompt)} characters")
+            debug_log(f"Structured Prompt: len={len(final_prompt)} chars, build_ms={build_ms}, shown_moves={len(shown_moves)}")
+            print(f"DEBUG: Structured prompt total length: {len(final_prompt)} characters")
         except Exception:
             pass
 
-        return minimal_prompt
+        return final_prompt
 
     def reconcile_turn(self) -> None:
         """Ensure current_player matches board.turn. Do not modify board; only sync current_player_index."""
@@ -819,6 +956,7 @@ class ChessGame(BaseGame):
         except Exception:
             gives_check = False
         worst_drop = 0
+        worst_line = None
         # Prioritize forcing replies first
         replies = list(temp.legal_moves)
         forcing = [m for m in replies if temp.is_capture(m)]
@@ -826,7 +964,9 @@ class ChessGame(BaseGame):
         for idx, opp_move in enumerate(replies[:12]):
             temp.push(opp_move)
             delta = baseline - self._evaluate_material(temp, perspective)
-            worst_drop = max(worst_drop, delta)
+            if delta > worst_drop:
+                worst_drop = delta
+                worst_line = opp_move
             temp.pop()
         # If the move evacuates a hanging piece to safety, be more permissive
         try:
@@ -872,7 +1012,22 @@ class ChessGame(BaseGame):
             adjusted_threshold += 1
         if gives_check:
             adjusted_threshold += 2
-        return queen_sac or (worst_drop >= adjusted_threshold)
+        veto = queen_sac or (worst_drop >= adjusted_threshold)
+        # Record blunder info for feedback
+        try:
+            if veto:
+                info = {
+                    "threshold": adjusted_threshold,
+                    "worst_drop": worst_drop,
+                    "gives_check": gives_check,
+                    "queen_sac": queen_sac,
+                    "worst_reply": worst_line.uci() if worst_line else None,
+                    "move_uci": move.uci(),
+                }
+                self._last_blunder_info = info
+        except Exception:
+            pass
+        return veto
 
     def _get_checking_pieces(self) -> List[str]:
         if not self.board.is_check():
@@ -992,6 +1147,40 @@ class ChessGame(BaseGame):
         # Select the candidate with the highest score (best worst-case outcome)
         best = max(candidates, key=lambda x: x[0])
         return best[1].uci()
+
+    def get_safe_candidates(self, limit: int = 3) -> list[str]:
+        """Return up to `limit` safe candidate UCI moves ranked by worst-case outcome."""
+        legal = list(self.board.legal_moves)
+        scored: list[tuple[float, str]] = []
+        perspective = self.board.turn
+        baseline = self._evaluate_material(self.board, perspective)
+        hanging_before = self._get_hanging_squares_for_current()
+        for mv in legal:
+            try:
+                temp = self.board.copy()
+                temp.push(mv)
+                replies = list(temp.legal_moves)
+                forcing = [m for m in replies if temp.is_capture(m)]
+                replies = forcing + [m for m in replies if m not in forcing]
+                worst = 0
+                for opp in replies[:10]:
+                    temp.push(opp)
+                    delta = baseline - self._evaluate_material(temp, perspective)
+                    if delta > worst:
+                        worst = delta
+                    temp.pop()
+                bonus = 0.0
+                if mv.from_square in hanging_before:
+                    new_sq = mv.to_square
+                    attackers_new = len(temp.attackers(not self.board.turn, new_sq))
+                    defenders_new = len(temp.attackers(self.board.turn, new_sq))
+                    if attackers_new <= defenders_new:
+                        bonus += 0.5
+                scored.append((-(worst - bonus), mv.uci()))
+            except Exception:
+                continue
+        scored.sort(key=lambda x: (-x[0], x[1]))
+        return [uci for _, uci in scored[:max(1, limit)]]
     
     def get_pgn_history(self, include_headers: bool = True, max_moves: Optional[int] = None) -> str:
         """

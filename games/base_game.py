@@ -287,13 +287,31 @@ class BaseGame(ABC):
             except Exception:
                 pass
 
+            # Build logging metadata (phase, eval deltas if provided by subclass)
+            metadata = {}
+            try:
+                if hasattr(self, 'detect_game_phase') and callable(getattr(self, 'detect_game_phase')):
+                    ph, pinfo = self.detect_game_phase()
+                    metadata['phase'] = ph
+                    metadata['phase_info'] = pinfo
+            except Exception:
+                pass
+            try:
+                if hasattr(self, '_last_move_metadata'):
+                    lm = getattr(self, '_last_move_metadata')
+                    if isinstance(lm, dict):
+                        metadata.update(lm)
+            except Exception:
+                pass
+
             self.logger.log_move(
                 player=player_name,
                 move=action,
                 reasoning=compact_reasoning,
                 game_state=self.get_state_text(),
                 move_number=self.move_count,
-                is_valid=is_valid
+                is_valid=is_valid,
+                metadata=metadata if metadata else None,
             )
             
             if is_valid:
@@ -344,17 +362,18 @@ class BaseGame(ABC):
                     debug_log(f"Failed moves for {player_name}: {list(self.failed_moves[player_name])}")
                 except:
                     pass
-                # Do not consume attempt on veto; allow up to 2 veto retries
+                # Do not consume attempt on veto; allow up to 3 veto retries
                 if vetoed:
                     veto_retries += 1
                     try:
                         last_veto_uci = getattr(self, '_last_vetoed_move_uci', '')
                         if last_veto_uci:
                             # mark avoid and include legal on next prompt (handled by prompt builder)
-                            self._last_failure_reason[player_name] = "Previous attempt likely blundered material (>threshold)"
+                            if not self._last_failure_reason.get(player_name):
+                                self._last_failure_reason[player_name] = "Previous attempt likely blundered material."
                     except Exception:
                         pass
-                    if veto_retries >= 2:
+                    if veto_retries >= 3:
                         print("DEBUG: Exceeded veto retries; using safe fallback")
                         legal_actions = self.get_legal_actions()
                         try:

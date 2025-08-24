@@ -28,7 +28,8 @@ class GameLogger:
             self.log_file = os.path.join(self.log_dir, f"{game_type}_{timestamp}.json")
     
     def log_move(self, player: str, move: str, reasoning: str, 
-                 game_state: str, move_number: int, is_valid: bool = True):
+                 game_state: str, move_number: int, is_valid: bool = True,
+                 metadata: Optional[Dict[str, Any]] = None):
         """
         Log a player's move with reasoning.
         
@@ -47,7 +48,8 @@ class GameLogger:
             "move": move,
             "reasoning": reasoning,
             "game_state": game_state,
-            "is_valid": is_valid
+            "is_valid": is_valid,
+            "metadata": metadata or {}
         }
         
         self.game_history.append(log_entry)
@@ -57,6 +59,15 @@ class GameLogger:
         print(f"\n{status} Move {move_number} - {player.upper()}")
         print(f"Move: {move}")
         print(f"Reasoning: {reasoning}")
+        try:
+            if log_entry.get("metadata", {}).get("phase"):
+                print(f"Phase: {log_entry['metadata']['phase']}")
+            if log_entry.get("metadata", {}).get("material_delta") is not None:
+                print(f"Material Δ (self POV): {log_entry['metadata']['material_delta']:+d}")
+            if log_entry.get("metadata", {}).get("gave_check"):
+                print("Gave check: True")
+        except Exception:
+            pass
         if not is_valid:
             # Messaging handled upstream; avoid misleading label here
             print("⚠️  Move not accepted")
