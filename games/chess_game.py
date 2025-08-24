@@ -259,6 +259,9 @@ class ChessGame(BaseGame):
                         # Track per-turn veto count
                         uci = move.uci()
                         self._vetoed_moves_this_turn[uci] = self._vetoed_moves_this_turn.get(uci, 0) + 1
+                        # Mark last veto details for loop control
+                        setattr(self, '_last_vetoed', True)
+                        setattr(self, '_last_vetoed_move_uci', uci)
                     except Exception:
                         pass
                     return False
@@ -343,11 +346,11 @@ class ChessGame(BaseGame):
         # Compact PGN tail (last few plies, no headers)
         pgn_tail = self.get_pgn_history(include_headers=False, max_moves=6)
 
-        # Graduated scaffolding: include legal UCI only after parse failures
+        # Graduated scaffolding: include legal UCI only after parse failures or veto
         include_legal = False
         try:
             last_reason = self._last_failure_reason.get(self.current_player) if hasattr(self, '_last_failure_reason') else ""
-            if last_reason and ("Could not parse move" in last_reason or "Respond with first line" in last_reason):
+            if last_reason and ("Could not parse move" in last_reason or "Respond with first line" in last_reason or "blundered material" in last_reason):
                 include_legal = True
         except Exception:
             include_legal = False
@@ -355,6 +358,13 @@ class ChessGame(BaseGame):
         legal_moves_uci: list[str] = []
         if include_legal:
             legal_moves_uci = self.get_legal_actions()
+        # Provide neutral avoid list after veto(s) this turn
+        avoid_moves: list[str] = []
+        try:
+            if getattr(self, '_vetoed_moves_this_turn', None):
+                avoid_moves = list(self._vetoed_moves_this_turn.keys())
+        except Exception:
+            avoid_moves = []
 
         # Build minimal prompt
         state_lines = [
@@ -366,6 +376,8 @@ class ChessGame(BaseGame):
         ]
         if include_legal:
             state_lines.append(f", \"legal_moves_uci\": {json.dumps(legal_moves_uci)}")
+        if avoid_moves:
+            state_lines.append(f", \"avoid_moves\": {json.dumps(avoid_moves)}")
         state_lines.append("}\n")
 
         # Minimal protocol (no guidance)

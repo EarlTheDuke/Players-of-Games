@@ -325,14 +325,34 @@ class BaseGame(ABC):
                     skip_track = False
                 if not skip_track:
                     self.failed_moves[player_name].add(action)
-                print(f"DEBUG: Move {action} invalid, attempt {attempt + 1}/{max_attempts}")
+                # Distinguish veto vs invalid
+                vetoed = False
+                try:
+                    vetoed = getattr(self, '_last_vetoed', False)
+                    if vetoed:
+                        setattr(self, '_last_vetoed', False)
+                except Exception:
+                    vetoed = False
+                label = "vetoed (policy)" if vetoed else "invalid"
+                print(f"DEBUG: Move {action} {label}, attempt {attempt + 1}/{max_attempts}")
                 print(f"DEBUG: Failed moves for {player_name}: {list(self.failed_moves[player_name])}")
                 try:
                     from debug_console import debug_log
-                    debug_log(f"FAILED: Move {action} invalid, attempt {attempt + 1}/{max_attempts}")
+                    debug_log(f"FAILED: Move {action} {label}, attempt {attempt + 1}/{max_attempts}")
                     debug_log(f"Failed moves for {player_name}: {list(self.failed_moves[player_name])}")
                 except:
                     pass
+                # Do not consume attempt on veto; only count true invalids
+                if vetoed:
+                    # If the model repeats the same vetoed move, allow only one retry
+                    try:
+                        last_veto_uci = getattr(self, '_last_vetoed_move_uci', '')
+                        if last_veto_uci:
+                            # mark avoid and include legal on next prompt (handled by prompt builder)
+                            self._last_failure_reason[player_name] = "Previous attempt likely blundered material (>threshold)"
+                    except Exception:
+                        pass
+                    continue
                 if attempt == max_attempts - 1:
                     # All attempts failed - this shouldn't happen with our fixes
                     self.logger.log_error(
@@ -353,7 +373,7 @@ class BaseGame(ABC):
                         self.logger.log_move(
                             player=player_name,
                             move=fallback_move,
-                            reasoning="Emergency fallback: random legal move",
+                            reasoning="Emergency fallback: safe legal move",
                             game_state=self.get_state_text(),
                             move_number=self.move_count,
                             is_valid=True
