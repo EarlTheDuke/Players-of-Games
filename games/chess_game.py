@@ -357,8 +357,6 @@ class ChessGame(BaseGame):
         move_number = self.board.fullmove_number
         # Compact PGN tail (last few plies, no headers)
         pgn_tail = self.get_pgn_history(include_headers=False, max_moves=6)
-        # Always include an ASCII board view for improved spatial reasoning
-        current_board_display = self.get_state_display()
 
         # Graduated scaffolding: include legal UCI only after parse failures, veto, or repetition detection
         include_legal = False
@@ -404,7 +402,6 @@ class ChessGame(BaseGame):
             f"  \"turn\": \"{board_turn}\"",
             f", \"move_number\": {move_number}",
             f", \"fen\": \"{current_fen}\"",
-            f", \"board_ascii\": \"{current_board_display.replace('\\', '\\\\').replace('\"', '\\\"')}\"",
             f", \"pgn_tail\": \"{pgn_tail.replace('\\', '\\\\').replace('\"', '\\\"')}\"",
         ]
         if include_legal:
