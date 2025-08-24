@@ -275,10 +275,20 @@ class BaseGame(ABC):
             is_valid = self.validate_and_apply_action(action)
             
             # Log the move
+            # If model returned only MOVE line or empty, suppress noisy reasoning in logs
+            compact_reasoning = reasoning
+            try:
+                if compact_reasoning:
+                    stripped = compact_reasoning.strip()
+                    if stripped.upper().startswith("MOVE:") and len(stripped) <= 20:
+                        compact_reasoning = ""
+            except Exception:
+                pass
+
             self.logger.log_move(
                 player=player_name,
                 move=action,
-                reasoning=reasoning,
+                reasoning=compact_reasoning,
                 game_state=self.get_state_text(),
                 move_number=self.move_count,
                 is_valid=is_valid

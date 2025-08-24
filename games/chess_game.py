@@ -291,7 +291,9 @@ class ChessGame(BaseGame):
                 is_mate = self.board.is_checkmate()
                 is_stalemate = self.board.is_stalemate()
                 castling_after = f"W:K{int(self.board.has_kingside_castling_rights(chess.WHITE))}Q{int(self.board.has_queenside_castling_rights(chess.WHITE))} | B:K{int(self.board.has_kingside_castling_rights(chess.BLACK))}Q{int(self.board.has_queenside_castling_rights(chess.BLACK))}"
-                apply_ms = int((time.perf_counter() - apply_start) * 1000)
+                # Use one decimal ms; minimum 0.1 ms to avoid showing 0
+                apply_ms_val = (time.perf_counter() - apply_start) * 1000.0
+                apply_ms = max(0.1, round(apply_ms_val, 1))
                 print(f"DEBUG: Move {action} applied successfully")
                 # Emit structured post-move block
                 try:
@@ -306,7 +308,7 @@ class ChessGame(BaseGame):
                         f"Opponent replies available: {reply_count}",
                         f"Checkmate: {is_mate}, Stalemate: {is_stalemate}",
                         f"Castling rights after: {castling_after}",
-                        f"Apply ms: {apply_ms}",
+                        f"Apply ms: {apply_ms} ms",
                         f"FEN: {after_fen}",
                     ])
                 except Exception:
@@ -616,12 +618,6 @@ class ChessGame(BaseGame):
             
             if is_legal:
                 parse_ms = int((time.time() - parse_start) * 1000)
-                if not has_candidates:
-                    print("⚠️ FORMAT WARNING: No CANDIDATES section present; accepting legal move but will warn in next prompt.")
-                    try:
-                        self._last_failure_reason[self.current_player] = "Missing CANDIDATES: include 2-3 lines next time"
-                    except Exception:
-                        pass
                 print(f"🎉 VALIDATION SUCCESS: Move '{parsed_move}' is valid!")
                 try:
                     from debug_console import debug_log
